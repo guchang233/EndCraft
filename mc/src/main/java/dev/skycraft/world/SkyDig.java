@@ -53,6 +53,8 @@ import org.jspecify.annotations.Nullable;
  * around them; the server just applies it.
  */
 public final class SkyDig {
+	/** Endfield has no native terrain destruction adapter. Keep its ground intact. */
+	public static final boolean HOST_TERRAIN_DESTRUCTION = false;
 	private SkyDig() {
 	}
 
@@ -171,7 +173,7 @@ public final class SkyDig {
 	 */
 	public static void open(ServerPlayer player, int world, BlockPos pos, int material) {
 		ServerLevel level = player.level();
-		if (!destruction || !inReach(player, pos, REACH) || !level.isLoaded(pos) || player.isSpectator()) {
+		if (!HOST_TERRAIN_DESTRUCTION || !destruction || !inReach(player, pos, REACH) || !level.isLoaded(pos) || player.isSpectator()) {
 			return;
 		}
 		LevelChunk chunk = level.getChunkAt(pos);
@@ -195,7 +197,7 @@ public final class SkyDig {
 
 	/** Cells around a mined one that are wholly inside Skyrim's geometry: blocks now. */
 	public static void reveal(ServerPlayer player, int world, List<BlockPos> cells, int[] materials) {
-		if (!destruction) {
+		if (!HOST_TERRAIN_DESTRUCTION || !destruction) {
 			return;
 		}
 		ServerLevel level = player.level();
@@ -217,6 +219,7 @@ public final class SkyDig {
 
 	/** Marks a cell dug out of Skyrim's geometry (in that Skyrim world). Returns false if it was already. */
 	public static boolean markDug(ServerLevel level, int world, BlockPos pos) {
+		if (!HOST_TERRAIN_DESTRUCTION) return false;
 		LevelChunk chunk = level.getChunkAt(pos);
 		DugColumn column = column(chunk);
 		if (column.isDug(world, pos.getX(), pos.getY(), pos.getZ())) {
@@ -667,6 +670,7 @@ public final class SkyDig {
 	 * make solid. Null for none. Any thread.
 	 */
 	public static @Nullable VoxelShape wallShape(net.minecraft.world.level.CollisionGetter getter, BlockPos pos) {
+		if (!HOST_TERRAIN_DESTRUCTION) return null;
 		if (!(getter instanceof Level level) || !SkyCollision.active()) {
 			return null;
 		}

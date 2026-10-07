@@ -47,9 +47,9 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay2.dll
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay24\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay24.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay27\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay27.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
-inspector-test.exe endcraft.gameplay24.dll
+inspector-test.exe endcraft.gameplay27.dll
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1

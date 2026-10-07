@@ -20,7 +20,10 @@
     "ProjectileUtilMixin",
     "ServerExplosionMixin",
     "ServerPlayerMixin",
-    "SmithingMixin"
+    "SmithingMixin",
+    "VehicleDismountMixin"
   ],
-  "injectors": { "defaultRequire": 1 }
+  "injectors": {
+    "defaultRequire": 1
+  }
 }

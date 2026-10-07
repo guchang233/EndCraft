@@ -2,6 +2,7 @@
 #include "unity_bridge.h"
 #include "bridge_memory.h"
 #include "coordinate_map.h"
+#include "native_passengers.h"
 #include "nlohmann/json.hpp"
 #include <unordered_map>
 #include <cmath>
@@ -11,7 +12,8 @@ namespace endcraft {
 // Forward the resulting amount through the host's ordinary damage modifier pipeline.
 class NativeCombat {
     unity::Api api;
-    struct Actor {void* entity;void* ability;std::uint32_t entityRoot,abilityRoot;unity::V3 position;double hp,maxHp;};
+    NativePassengers passengers;
+    struct Actor {void* entity;void* ability;std::uint32_t entityRoot,abilityRoot;unity::V3 position;double hp,maxHp;bool hostile,rideable;};
     std::unordered_map<std::uint32_t,Actor> targets;
     std::uint64_t lastScan=0,requests=0,accepted=0,rejected=0,confirmedHpDrops=0;
     std::uint32_t watched=0;
@@ -43,7 +45,7 @@ class NativeCombat {
     void clearTargets() {
         if(api.raw()) for(auto& [id,a]:targets) {
             api.raw()->gchandle_free(api.raw()->context,a.entityRoot);
-            api.raw()->gchandle_free(api.raw()->context,a.abilityRoot);
+            if(a.abilityRoot) api.raw()->gchandle_free(api.raw()->context,a.abilityRoot);
         }
         targets.clear();
     }
@@ -61,31 +63,41 @@ class NativeCombat {
             auto* entity=api.call(method("ObjectMono","get_entity","","Beyond.Gameplay.Core.Entity"),mono);
             if(!entity||entity==player) continue;
             auto* enemy=api.call(method("Entity","get_enemyCtrl","","Beyond.Gameplay.Core.EnemyController"),entity);
-            if(!enemy||!api.value<bool>(method("Entity","get_alive","","System.Boolean"),entity)) continue;
-            if(api.value<int>(method("Entity","get_factionIndex","","Beyond.Gameplay.Core.FactionIndex"),entity)==ownFaction) continue;
+            auto* npc=api.call(method("Entity","get_npc","","Beyond.Gameplay.Core.NpcRootComponent"),entity);
+            if((!enemy&&!npc)||!api.value<bool>(method("Entity","get_alive","","System.Boolean"),entity)
+                ||api.value<bool>(method("Entity","get_markReleased","","System.Boolean"),entity)
+                ||api.value<bool>(method("Entity","get_inCinematic","","System.Boolean"),entity)) continue;
+            const bool hostile=enemy&&api.value<int>(method("Entity","get_factionIndex","","Beyond.Gameplay.Core.FactionIndex"),entity)!=ownFaction;
             const auto id=api.value<std::uint32_t>(method("Entity","get_instanceUid","","System.UInt32"),entity);
             if(!id||targets.contains(id)) continue;
             const auto at=api.value<unity::V3>(method("Entity","get_position","","UnityEngine.Vector3"),entity);
             const float dx=at.x-position.x,dy=at.y-position.y,dz=at.z-position.z;
             if(!std::isfinite(dx)||!std::isfinite(dy)||!std::isfinite(dz)||dx*dx+dy*dy+dz*dz>64*64) continue;
             auto* ability=api.call(method("Entity","get_abilityCom","","Beyond.Gameplay.Core.AbilitySystem"),entity);
-            if(!ability) continue;
-            double hp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),ability);
-            double max=api.value<double>(method("AbilitySystem","get_maxHp","","System.Double"),ability);
-            if(!std::isfinite(hp)||!std::isfinite(max)||hp<=0||max<=0) continue;
-            Actor actor{entity,ability,api.raw()->gchandle_new(api.raw()->context,entity,0),api.raw()->gchandle_new(api.raw()->context,ability,0),at,hp,max};
-            if(!actor.entityRoot||!actor.abilityRoot) throw std::runtime_error("combat actor root failed");
+            if(hostile&&!ability) continue;
+            double hp=ability?api.value<double>(method("AbilitySystem","get_hp","","System.Double"),ability):20.;
+            double max=ability?api.value<double>(method("AbilitySystem","get_maxHp","","System.Double"),ability):20.;
+            if(!std::isfinite(hp)||!std::isfinite(max)) continue;
+            if(hostile&&(hp<=0||max<=0)) continue;
+            if(!hostile&&(hp<=0||max<=0)) {hp=max=20.;}
+            auto* movement=api.call(method("Entity","get_movementComponent","","Beyond.Gameplay.Core.MovementComponent"),entity);
+            float width=movement?2*api.value<float>(method("MovementComponent","GetCapsuleRadius","","System.Single"),movement):.7f;
+            float height=movement?api.value<float>(method("MovementComponent","GetCapsuleHeight","","System.Single"),movement):1.8f;
+            const bool rideable=(movement||npc) && std::isfinite(width) && std::isfinite(height) && width>0 && width<3.5f && height<4.f
+                && !api.value<bool>(method("Entity","get_isPaused","","System.Boolean"),entity);
+            Actor actor{entity,ability,api.raw()->gchandle_new(api.raw()->context,entity,0),ability?api.raw()->gchandle_new(api.raw()->context,ability,0):0,at,hp,max,hostile,rideable};
+            if(!actor.entityRoot||(ability&&!actor.abilityRoot)) throw std::runtime_error("combat actor root failed");
             targets.emplace(id,actor);
             auto mc=coordinates::toMc(origin,mcOrigin,at);
-            proto::ActorRecord record{};record.formId=id;record.flags=proto::kActorHostile;
-            record.x=mc.x;record.y=mc.y;record.z=mc.z;record.width=.7f;record.height=1.8f;
-            record.healthFrac=float(hp/max);std::memcpy(record.name,"Endfield enemy",15);
+            proto::ActorRecord record{};record.formId=id;record.flags=(hostile?proto::kActorHostile:proto::kActorEssential)|(rideable?proto::kActorRideable:0)|(passengers.mounted(id)?proto::kActorMounted:0);
+            record.x=mc.x;record.y=mc.y;record.z=mc.z;record.width=std::clamp(width,.2f,10.f);record.height=std::clamp(height,.2f,10.f);
+            record.healthFrac=float(hp/max);std::memcpy(record.name,hostile?"Endfield enemy":"Endfield NPC",hostile?15:13);
             records.push_back(record);
         }
         memory.actors(records);
     }
 public:
-    void bind(const BE_HostApiV1* runtime) {api.bind(runtime);}
+    void bind(const BE_HostApiV1* runtime) {api.bind(runtime);passengers.bind(runtime);}
     void releaseProtection() noexcept {
         if(protectionBox) try {
             api.call(method("AbilitySystem/AllowedDamageMaskHandle","Revert"),api.raw()->object_unbox(api.raw()->context,protectionBox));
@@ -113,7 +125,7 @@ public:
             protectionError.clear();
         } catch(const std::exception& e) {protectionError=e.what();}
     }
-    void stop(BridgeMemory& memory,bool restoreProtection=true) {if(restoreProtection) releaseProtection();clearTargets();memory.actors({});proto::McEvent event{};for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {} watched=0;}
+    void stop(BridgeMemory& memory,bool restoreProtection=true) {passengers.stop();if(restoreProtection) releaseProtection();clearTargets();memory.actors({});proto::McEvent event{};for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {} watched=0;}
     void tick(void* player,unity::V3 position,unity::V3 origin,unity::V3 mcOrigin,BridgeMemory& memory) noexcept {
         try {
             const auto now=GetTickCount64();
@@ -127,10 +139,16 @@ public:
             } else if(watched) {watched=0;lastResult="attack_without_confirmed_hp_drop";}
             if(now-lastScan>=250) {lastScan=now;scan(player,position,origin,mcOrigin,memory);}
             proto::McEvent event{};
-            for(unsigned i=0;i<32&&memory.event(event);++i) {
+            for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {
+                if(event.type==proto::kEvActorVehicle) {
+                    auto found=targets.find(event.formId);
+                    passengers.accept(event,found==targets.end()?nullptr:found->second.entity,
+                        found!=targets.end()&&found->second.rideable,origin,mcOrigin);
+                    continue;
+                }
                 if(event.type!=proto::kEvHitActor) continue;
                 ++requests;auto found=targets.find(event.formId);
-                if(found==targets.end()||!std::isfinite(event.a)||event.a<=0) {++rejected;lastResult="unknown_or_invalid_target";continue;}
+                if(found==targets.end()||!found->second.hostile||!found->second.ability||!std::isfinite(event.a)||event.a<=0) {++rejected;lastResult="unknown_or_invalid_target";continue;}
                 auto* source=api.call(method("Entity","get_abilityCom","","Beyond.Gameplay.Core.AbilitySystem"),player);
                 if(!source) {++rejected;lastResult="player_ability_missing";continue;}
                 const auto hp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
@@ -158,13 +176,15 @@ public:
                     if(hpAfter<hp) ++localHpDrops;
                 } else {++rejected;lastResult="damage_modifier_rejected_by_game";}
             }
+            passengers.tick();
             error.clear();
-        } catch(const std::exception& e) {error=e.what();}
+        } catch(const std::exception& e) {error=e.what();passengers.stop();}
     }
+    void stopPassengers() {passengers.stop();}
     nlohmann::json snapshot() const {
         nlohmann::json actors=nlohmann::json::array();
-        for(const auto& [id,a]:targets) actors.push_back({{"id",id},{"position",{a.position.x,a.position.y,a.position.z}},{"hp",a.hp},{"max_hp",a.maxHp}});
-        return {{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_enemies",targets.size()},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
+        for(const auto& [id,a]:targets) actors.push_back({{"id",id},{"position",{a.position.x,a.position.y,a.position.z}},{"hp",a.hp},{"max_hp",a.maxHp},{"hostile",a.hostile},{"rideable",a.rideable}});
+        return {{"passengers",passengers.snapshot()},{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_actors",targets.size()},{"nearby_enemies",std::count_if(targets.begin(),targets.end(),[](const auto& a){return a.second.hostile;})},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
             {"confirmed_hp_drops",confirmedHpDrops},{"watched_target",watched},{"hp_before",hpBefore},{"hp_after",hpAfter},
             {"server_hp_before",serverHpBefore},{"server_hp_after",serverHpAfter},{"last_result",lastResult},{"error",error}};
     }

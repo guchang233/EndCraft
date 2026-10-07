@@ -10,7 +10,7 @@ spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-prob
 installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
 
 def main(kind='inspect'):
-    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24'): raise RuntimeError('Unknown project module.')
+    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27'): raise RuntimeError('Unknown project module.')
     module_id='endcraft.'+kind
     state=json.loads(installer.STATE.read_text());installer.validate_owned(state)
     package=ROOT/'build'/f'{kind}-package'
@@ -50,5 +50,5 @@ def main(kind='inspect'):
 
 if __name__=='__main__':
     import argparse
-    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24'],default='inspect')
+    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27'],default='inspect')
     main(parser.parse_args().kind)

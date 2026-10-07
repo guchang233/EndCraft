@@ -57,6 +57,8 @@ public final class Proto {
 	public static final int ACTOR_DEAD = 1 << 1;
 	public static final int ACTOR_ESSENTIAL = 1 << 2;
 	public static final int ACTOR_IN_COMBAT = 1 << 3;
+	public static final int ACTOR_RIDEABLE = 1 << 4;
+	public static final int ACTOR_MOUNTED = 1 << 5;
 
 	// Event ring (relative to OFF_EVENT_RING)
 	public static final int EVENT_RING_ENTRIES = 512;
@@ -69,6 +71,9 @@ public final class Proto {
 	public static final int EV_EXPLOSION = 3;
 	public static final int EV_ARROW_STUCK = 4;
 	public static final int EV_SKILL_USE = 5;
+	// Native actor passenger pose: formId, a/b/c feet, d yaw, flags=1 aboard,
+	// weapon=MC vehicle id. Sent every server tick; flags=0 releases control.
+	public static final int EV_ACTOR_VEHICLE = 6;
 	// Skyrim skills (ActorValue) Minecraft reports use of; weapon skills come from EV_HIT_ACTOR.
 	public static final int SKILL_BLOCK = 9;
 	public static final int SKILL_SMITHING = 10;

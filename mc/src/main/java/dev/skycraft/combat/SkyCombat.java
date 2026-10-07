@@ -106,6 +106,7 @@ public final class SkyCombat {
 			Map.Entry<Integer, SkyrimActorEntity> e = it.next();
 			SkyrimActorEntity proxy = e.getValue();
 			if (!live.containsKey(e.getKey()) || proxy.isRemoved() || proxy.level() != level) {
+				SkyPassengers.forget(proxy);
 				proxy.discard();
 				it.remove();
 			}
@@ -127,6 +128,7 @@ public final class SkyCombat {
 				PROXIES.put(a.formId(), proxy);
 				continue;
 			}
+			if (SkyPassengers.sync(level, proxy, a)) continue;
 			proxy.setSize(a.width(), a.height());
 			proxy.setPos(a.x(), a.y(), a.z());
 			proxy.setYRot(a.yaw());
@@ -177,7 +179,7 @@ public final class SkyCombat {
 		if (PROXIES.isEmpty()) {
 			return;
 		}
-		PROXIES.values().forEach(Entity::discard);
+		PROXIES.values().forEach(proxy -> { SkyPassengers.forget(proxy); proxy.discard(); });
 		PROXIES.clear();
 	}
 

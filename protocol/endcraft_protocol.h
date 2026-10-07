@@ -209,6 +209,8 @@ namespace skycraft::proto
 		kActorDead = 1u << 1,
 		kActorEssential = 1u << 2,
 		kActorInCombat = 1u << 3,
+		kActorRideable = 1u << 4,
+		kActorMounted = 1u << 5,
 	};
 
 	struct ActorRecord
@@ -250,6 +252,8 @@ namespace skycraft::proto
 		                    // flags = flight pitch (float bits), weapon = arrow texture (0 plain, 1 tipped, 2 spectral)
 		kEvSkillUse = 5,    // the player used a Skyrim skill in Minecraft: formId = Skyrim skill (ActorValue: 9 Block,
 		                    // 10 Smithing, 11 Heavy Armor, 12 Light Armor), a = uses (as Skyrim's AdvanceSkill counts them)
+		kEvActorVehicle = 6, // formId, a/b/c = MC passenger feet, d = yaw; flags=1 aboard,
+		                     // weapon = MC vehicle id. flags=0 releases the native actor.
 	};
 
 	enum HitFlags : std::uint32_t

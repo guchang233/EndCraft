@@ -1,3 +1,4 @@
+param([ValidateSet("Collision","DigClient")][string]$Adapter="Collision")
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskJdk=Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon\bin'
@@ -12,6 +13,6 @@ $taskManifest=Join-Path $taskDirectory 'MANIFEST.MF'
 $taskJar=Join-Path $taskDirectory 'terrain-reload.jar'
 & (Join-Path $taskJdk 'jar.exe') cfm $taskJar $taskManifest -C $taskDirectory EndCraftTerrainReloadAgent.class
 if($LASTEXITCODE){throw 'Package failed.'}
-& (Join-Path $taskJdk 'java.exe') --add-modules jdk.attach -cp $taskJar EndCraftTerrainReloadAgent $taskClients[0].ProcessId $taskJar (Join-Path $taskRoot 'mc\build\classes\java\main\dev\skycraft\world\SmoothTerrainCollision.class')
+& (Join-Path $taskJdk 'java.exe') --add-modules jdk.attach -cp $taskJar EndCraftTerrainReloadAgent $taskClients[0].ProcessId $taskJar $(if($Adapter -eq 'DigClient'){Join-Path $taskRoot 'mc\build\classes\java\client\dev\skycraft\client\SkyDigClient.class'}else{Join-Path $taskRoot 'mc\build\classes\java\main\dev\skycraft\world\SmoothTerrainCollision.class'})
 if($LASTEXITCODE){throw 'Terrain solver reload failed.'}
 'Project guest terrain solver reloaded.'

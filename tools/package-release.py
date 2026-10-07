@@ -34,7 +34,7 @@ def archive_source(output, version):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--module', default='endcraft.gameplay24')
+    parser.add_argument('--module', default='endcraft.gameplay27')
     args = parser.parse_args()
     version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
     module = args.module

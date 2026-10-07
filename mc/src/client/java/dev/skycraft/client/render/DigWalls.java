@@ -41,6 +41,7 @@ final class DigWalls {
 
 	/** Adds the walls around the dug cells of one section (bits: x + 16z + 256y). */
 	static void add(ClientLevel level, int sx, int sy, int sz, long[] dug, SkyDig.DugLookup lookup, Faces faces, Out out) {
+		if (!SkyDig.HOST_TERRAIN_DESTRUCTION) return;
 		SkyDig.Probe probe = new SkyDig.Probe();
 		Emitter emit = new Emitter(sx, sy, sz, out);
 		BlockPos.MutableBlockPos cell = new BlockPos.MutableBlockPos();

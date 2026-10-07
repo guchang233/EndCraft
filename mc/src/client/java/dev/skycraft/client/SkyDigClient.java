@@ -63,6 +63,7 @@ public final class SkyDigClient {
 	 * as mining the block it's made of would take. Returns true if it's being mined.
 	 */
 	public static boolean attack(Minecraft minecraft) {
+		if (!SkyDig.HOST_TERRAIN_DESTRUCTION) return false;
 		if (!(minecraft.hitResult instanceof SkyClip.SkyrimHitResult result) || minecraft.level == null || minecraft.player == null || minecraft.gameMode == null) {
 			return false;
 		}
@@ -115,6 +116,7 @@ public final class SkyDigClient {
 
 	/** Any block change on this client: a dug block that broke gets what's around it revealed. */
 	public static void blockChanged(ClientLevel level, BlockPos pos, BlockState before, BlockState after) {
+		if (!SkyDig.HOST_TERRAIN_DESTRUCTION) return;
 		if (before.isAir() || !(after.isAir() || after.canBeReplaced())) {
 			return;
 		}
@@ -128,6 +130,11 @@ public final class SkyDigClient {
 	}
 
 	public static void tick(Minecraft minecraft) {
+		if (!SkyDig.HOST_TERRAIN_DESTRUCTION) {
+			// Consume notifications even when the legacy dig renderer is disabled.
+			SkyCollision.takeChangedRegions(REVEAL::remove);
+			REVEAL.clear(); SEEN.clear(); SkyDig.clientDug = null; return;
+		}
 		ticks++;
 		ClientLevel level = minecraft.level;
 		if (level == null || minecraft.player == null) {

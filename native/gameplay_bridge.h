@@ -306,7 +306,7 @@ public:
                     unity::Api::TemporaryRoot root(api.raw(),encoded);
                     auto length=reinterpret_cast<std::uintptr_t(*)(void*)>(GetProcAddress(GetModuleHandleW(L"GameAssembly.dll"),"il2cpp_array_length"));
                     const auto n=length?length(encoded):0;if(!n||n>64ull*1024*1024) throw std::runtime_error("capture encoding invalid");
-                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay24-frame.png",std::ios::binary);
+                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay27-frame.png",std::ios::binary);
                     output.write(reinterpret_cast<const char*>(encoded)+32,std::streamsize(n));if(!output) throw std::runtime_error("capture write failed");
                     api.destroy(image);
                 } catch(const std::exception& e) {captureError=e.what();}
@@ -486,6 +486,7 @@ public:
             characterObject=character;
             proto::McState protectionState{};
             if(memory.mc(protectionState)) combat.protect(character,(protectionState.flags&proto::kMcInWorld)&&(protectionState.flags&proto::kMcInvulnerable));
+            else combat.releaseProtection();
             DWORD foreground=0;auto window=GetForegroundWindow();GetWindowThreadProcessId(window,&foreground);
             const bool focus=foreground==GetCurrentProcessId();input(focus);
             auto* camera=api.call(api.method("Camera","get_main","","UnityEngine.Camera"));
@@ -614,9 +615,10 @@ public:
             }
             if(renderer.ready) renderer.overlay(memory);
             if(ready&&poseOk) combat.tick(character,where,origin,mcOrigin,memory);
+            else combat.stopPassengers();
             if(renderer.ready&&frames%60==0) visibleMeshes=renderer.visibleMeshes();
         } catch(const std::exception& e) {
-            inputMask.release();
+            inputMask.release();combat.stop(memory);
             error=e.what();requested.store(false);if(memory.data) {input(false);proto::SkyState state{};state.flags=proto::kSkyLoading|proto::kSkyMenuOpen;memory.sky(state);}
             if(renderer.ready) renderer.visible(false);active=false;setCharacterVisible(true);
             try {cursor(false);} catch(...) {}

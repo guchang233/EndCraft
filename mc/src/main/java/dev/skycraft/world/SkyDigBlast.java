@@ -46,7 +46,7 @@ public final class SkyDigBlast {
 	/** For an explosion about to go off: null unless Skyrim's geometry around it is known. */
 	public static @Nullable SkyDigBlast begin(ServerExplosion explosion) {
 		Vec3 c = explosion.center();
-		if (!SkyDig.destruction || !SkyCollision.active() || !SkyCollision.isKnown((int) Math.floor(c.x), (int) Math.floor(c.y), (int) Math.floor(c.z)) || !SkyLink.readSkyState(SKY)) {
+		if (!SkyDig.HOST_TERRAIN_DESTRUCTION || !SkyDig.destruction || !SkyCollision.active() || !SkyCollision.isKnown((int) Math.floor(c.x), (int) Math.floor(c.y), (int) Math.floor(c.z)) || !SkyLink.readSkyState(SKY)) {
 			return null;
 		}
 		return new SkyDigBlast(explosion.level(), SKY.worldId, c, explosion.radius());

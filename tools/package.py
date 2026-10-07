@@ -24,7 +24,7 @@ def main(staging_only=False):
     (ROOT/'dist').mkdir(exist_ok=True)
     with zipfile.ZipFile(ROOT/'dist/EndCraft-Probe-0.1.0-win-x64.zip','w',zipfile.ZIP_DEFLATED) as archive:
         for relative in files: archive.write(staging/relative,relative)
-    for kind in ('inspect2','actor','telemetry','motion','teleport','targets','gameplay24'):
+    for kind in ('inspect2','actor','telemetry','motion','teleport','targets','gameplay27'):
         module_id='endcraft.'+kind
         source=ROOT/f'build/native/{module_id}.dll'
         manifest={'format':1,'abi':1,'id':module_id,'version':'0.1.0','name':'EndCraft '+kind,
