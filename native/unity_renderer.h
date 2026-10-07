@@ -19,6 +19,7 @@ class UnityRenderer {
     int targetWidth=0,targetHeight=0;
     std::map<unsigned,alpha::Texture> alphaTextures;
     unsigned hudWidth=0,hudHeight=0,front=0;
+    std::uint64_t lastImmediateHud=0;
     std::map<unsigned,void*> textures,materials;
     std::map<std::array<int,3>,MeshObject> sections;
     std::vector<MeshObject> avatar;
@@ -231,7 +232,7 @@ public:
         api.call(api.method("Graphic","set_raycastTarget","System.Boolean","System.Void","UnityEngine.UI.dll","UnityEngine.UI"),rawImage,{&raycast});
         api.setActive(canvas,false);ready=true;
     }
-    void visible(bool value) {if(canvas) api.setActive(canvas,value);for(auto& [key,s]:sections) api.setActive(s.object,value);if(!value) for(auto& a:avatar) api.setActive(a.object,false);}
+    void visible(bool value) {if(canvas) api.setActive(canvas,value&&GetTickCount64()-lastImmediateHud>250);for(auto& [key,s]:sections) api.setActive(s.object,value);if(!value) for(auto& a:avatar) api.setActive(a.object,false);}
     void collisionEnabled(bool value) {
         for(auto& [key,s]:sections) if(s.collider)
             api.call(api.method("Collider","set_enabled","System.Boolean","System.Void","UnityEngine.PhysicsModule.dll"),s.collider,{&value});
@@ -284,6 +285,9 @@ public:
                 unity::Rect screen{0,0,right,bottom},uv{0,0,1,1};int zero=0,pass=0;unity::Color white{1,1,1,1};
                 if(!nativeRendering) api.call(api.method("Graphics","DrawTexture","UnityEngine.Rect|UnityEngine.Texture|UnityEngine.Rect|System.Int32|System.Int32|System.Int32|System.Int32|UnityEngine.Color|UnityEngine.Material|System.Int32"),nullptr,{&screen,worldTarget,&uv,&zero,&zero,&zero,&zero,&white,hudMaterial,&pass});
                 api.call(api.method("Graphics","DrawTexture","UnityEngine.Rect|UnityEngine.Texture|UnityEngine.Rect|System.Int32|System.Int32|System.Int32|System.Int32|UnityEngine.Color|UnityEngine.Material|System.Int32"),nullptr,{&screen,hudTexture,&uv,&zero,&zero,&zero,&zero,&white,hudMaterial,&pass});
+                // The immediate path owns this frame's HUD. A simultaneous RawImage
+                // would blend translucent menu pixels a second time.
+                lastImmediateHud=GetTickCount64();api.setActive(canvas,false);
                 ++count;
             }
         } catch(...) {
@@ -341,7 +345,7 @@ public:
             hudTexture=api.texture(header.width,header.height,pixels.data());hudWidth=header.width;hudHeight=header.height;
             api.call(api.method("RawImage","set_texture","UnityEngine.Texture","System.Void","UnityEngine.UI.dll","UnityEngine.UI"),rawImage,{hudTexture});
         } else api.upload(hudTexture,hudWidth,hudHeight,pixels.data());
-        api.setActive(canvas,true);++hudFrames;
+        api.setActive(canvas,GetTickCount64()-lastImmediateHud>250);++hudFrames;
     }
     void message(unsigned type,const std::vector<unsigned char>& payload,unity::V3 player) {
         if(type==proto::kRenAtlas||type==proto::kRenTexture) {

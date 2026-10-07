@@ -271,7 +271,7 @@ public:
                     unity::Api::TemporaryRoot root(api.raw(),encoded);
                     auto length=reinterpret_cast<std::uintptr_t(*)(void*)>(GetProcAddress(GetModuleHandleW(L"GameAssembly.dll"),"il2cpp_array_length"));
                     const auto n=length?length(encoded):0;if(!n||n>64ull*1024*1024) throw std::runtime_error("capture encoding invalid");
-                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay18-frame.png",std::ios::binary);
+                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay19-frame.png",std::ios::binary);
                     output.write(reinterpret_cast<const char*>(encoded)+32,std::streamsize(n));if(!output) throw std::runtime_error("capture write failed");
                     api.destroy(image);
                 } catch(const std::exception& e) {captureError=e.what();}

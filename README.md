@@ -1,8 +1,8 @@
 # EndCraft：MC ×《明日方舟：终末地》联动原型
 
-**v1.0.0 是第 15 版原型的历史快照。** 当前开发修复版为 `endcraft.gameplay18`：HUD 按宿主分辨率绘制，已实测鞘翅滑翔与烟花推进，并加入请求宿主普通攻击的适配器；敌人实际扣血尚未验收。发布的 1.0 附件保持原样，当前改动尚未发布新版本。见 [当前验证](docs/VALIDATION-gameplay18.md) 和 [1.0 说明](docs/RELEASE-1.0.0.md)。
+**v1.0.0 是第 15 版原型的历史快照。** 当前开发修复版为 `endcraft.gameplay19`：HUD 按宿主分辨率绘制，已实测鞘翅滑翔与烟花推进，并加入请求宿主普通攻击的适配器；敌人实际扣血尚未验收。发布的 1.0 附件保持原样，当前改动尚未发布新版本。菜单遮罩降至 20%，消除了 HUD 重复绘制。见 [遮罩修复](docs/VALIDATION-gameplay19.md) 和 [飞行验证](docs/VALIDATION-gameplay18.md) 和 [1.0 说明](docs/RELEASE-1.0.0.md)。
 
-当前实际模块为 `endcraft.gameplay18`。真实游戏已显示史蒂夫、装备、MC 方块和物品栏。MC 网格进入原生 HGRP 场景绘制，使用场景深度并在原版 UI 之前绘制。相机支持 ±90° 俯仰；MC 客户端和内置服务器统一地形碰撞。
+当前实际模块为 `endcraft.gameplay19`。真实游戏已显示史蒂夫、装备、MC 方块和物品栏。MC 网格进入原生 HGRP 场景绘制，使用场景深度并在原版 UI 之前绘制。相机支持 ±90° 俯仰；MC 客户端和内置服务器统一地形碰撞。
 
 完整用户目标尚未完成：复杂地形、NPC 碰撞/寻路、战斗、飞行、完整输入隔离与跨场景恢复仍需完善或验收。本次实机证据及限制见 [验证记录](docs/VALIDATION-gameplay18.md)。
 
@@ -10,21 +10,21 @@ MC 端来自 SkyCraft，使用独立的 `mc/run`；共享内存 `Local\EndCraft_
 
 ## 当前安装与使用
 
-本机已注册并启用 `endcraft.gameplay18`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC；本次没有为验收该启动配置重启游戏。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
+本机已注册并启用 `endcraft.gameplay19`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC；本次没有为验收该启动配置重启游戏。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
 
 桥接俯仰范围为 -90° 至 +90°，第三人称加入正常宿主射线避障。极端仰视时相机会靠近角色，按 F5 使用第一人称可获得清晰视野。
 
 当前按键：WASD 移动、空格跳跃、1–9 选择快捷栏、右键使用/放置、左键破坏、E 打开 MC 库存、F5 切换视角。鞘翅在加入镜像世界时修复并设为不损耗。穿戴在胸甲栏，空中再次按空格展开，手持烟花右键推进；本次受控测试使用正常 MC 展翼与物品使用方法，确认宿主跟随飞行。玩家双击空格输入与复杂地形连续起降仍需复验。桥接取得全局 PlayerController 的独立动作屏蔽令牌，关闭时移除自己的令牌；菜单快捷键和完整输入隔离仍需验证。
 
 ```powershell
-python tools/runtime-report.py status --module endcraft.gameplay18 --output reports/gameplay18-status.json
+python tools/runtime-report.py status --module endcraft.gameplay19 --output reports/gameplay18-status.json
 ```
 
 诊断含实际 MC 坐标、相机模式、上传的模型顶点数、相机层掩码、可见网格数和渲染错误。`active` 或网格上传计数增加不能单独证明视觉效果正确。
 
 ## 构建
 
-当前第 18 版修复保存在本机工作目录，尚未推送。以下命令取得 GitHub 上已发布的 1.0 历史快照及固定版本依赖：
+当前第 19 版修复保存在本机工作目录，尚未推送。以下命令取得 GitHub 上已发布的 1.0 历史快照及固定版本依赖：
 
 ```powershell
 git clone --recurse-submodules https://github.com/guchang233/EndCraft.git
