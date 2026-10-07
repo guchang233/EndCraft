@@ -3,6 +3,7 @@
 #include "coordinate_map.h"
 #include "player_input_mask.h"
 #include "camera_math.h"
+#include "native_combat.h"
 #include "nlohmann/json.hpp"
 #include <atomic>
 #include <mutex>
@@ -16,6 +17,7 @@ class GameplayBridge {
     UnityRenderer renderer;
     PlayerInputMask inputMask;
     BridgeMemory memory;
+    NativeCombat combat;
     std::mutex mutex;
     std::atomic<bool> requested=false;
     bool initialized=false,active=false;
@@ -37,8 +39,10 @@ class GameplayBridge {
     static constexpr unsigned kMaxRenderMessages=512;
     static constexpr std::size_t kRenderByteBudget=8ull<<20;
     int terrainIndex=4;
+    int terrainCenterX=INT_MIN,terrainCenterZ=INT_MIN;
     unsigned terrainHits=0,terrainTriangles=0;
     std::uint64_t terrainSamples=0,safetyStops=0;
+    std::string lastRecoveryReason;
     unity::V3 safeHost{};
     bool keys[256]{};bool buttons[4]{};
     std::vector<unsigned char> payload;
@@ -66,6 +70,7 @@ class GameplayBridge {
     bool lookInitialized=false;
     bool probeRequested=false;
     float cameraDistanceUsed=0;
+    int viewportW=640,viewportH=360;
     static constexpr const char* gameAssembly="Gameplay.Beyond.dll";
     static constexpr const char* gameSpace="Beyond.Gameplay.Core";
     static float distance(unity::V3 a,unity::V3 b) {return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z));}
@@ -86,7 +91,7 @@ class GameplayBridge {
         if(focus&&(lastMc.flags&proto::kMcScreenOpen)) {
             POINT point{};RECT bounds{};auto window=GetForegroundWindow();
             if(GetCursorPos(&point)&&ScreenToClient(window,&point)&&GetClientRect(window,&bounds)&&bounds.right>0&&bounds.bottom>0)
-                memory.input({proto::kInCursor,0,int(point.x*640ll/bounds.right),int(point.y*360ll/bounds.bottom),0});
+                memory.input({proto::kInCursor,0,int(point.x*static_cast<long long>(viewportW)/bounds.right),int(point.y*static_cast<long long>(viewportH)/bounds.bottom),0});
         }
         // Preserve Minecraft's SDL scancodes for inventory and camera controls.
         const int keyPairs[][2]={{'W',26},{'A',4},{'S',22},{'D',7},{VK_SPACE,44},{VK_LSHIFT,225},{VK_LCONTROL,224},
@@ -146,21 +151,43 @@ class GameplayBridge {
         if(distance(expected,point)>.1f||normal.x*normal.x+normal.y*normal.y+normal.z*normal.z<.25f) return range;
         return (std::max)(0.f,length-.2f);
     }
-    void terrain(void* movement,unity::V3 mc,unity::V3 host) {
+    void terrain(void* movement,unity::V3 mc,unity::V3 /*host*/) {
         HostTerrainQuery query(renderer);
         // A measured height field for the first bridge. Vertical walls/caves still need mesh extraction.
         int centerX=int(std::floor(mc.x/8))*8,centerZ=int(std::floor(mc.z/8))*8;
+        if(centerX!=terrainCenterX||centerZ!=terrainCenterZ) {terrainIndex=4;terrainCenterX=centerX;terrainCenterZ=centerZ;}
         const int minX=centerX+(terrainIndex%3-1)*8,minZ=centerZ+(terrainIndex/3-1)*8;
         float heights[81];bool valid[81];
         terrainHits=0;++terrainSamples;
         for(int z=0;z<=8;++z) for(int x=0;x<=8;++x) {
-            auto p=toHost({float(minX+x),mc.y,float(minZ+z)});p.y=(std::max)(host.y,safeHost.y)+4;
+            auto p=toHost({float(minX+x),mc.y,float(minZ+z)});p.y=toHost(mc).y+.75f;
             unity::V3 hit{};auto i=z*9+x;valid[i]=ray(movement,p,hit);heights[i]=valid[i]?toMc(hit).y:0;
             terrainHits+=valid[i]?1u:0u;
         }
         std::vector<proto::ColTri> triangles;std::vector<proto::ColBlock> blocks;
         int minY=int(std::floor(mc.y/8))*8-16,maxY=minY+39;
+        for(int i=0;i<81;++i) if(valid[i]) minY=(std::min)(minY,int(std::floor(heights[i]/8))*8-8);
         for(int z=0;z<8;++z) for(int x=0;x<8;++x) {
+            if(minX+x==int(std::floor(mc.x))&&minZ+z==int(std::floor(mc.z))) {
+                float localHeight[25]{};bool localValid[25]{};
+                for(int lz=0;lz<=4;++lz) for(int lx=0;lx<=4;++lx) {
+                    auto p=toHost({minX+x+lx*.25f,mc.y,minZ+z+lz*.25f});p.y=toHost(mc).y+.75f;
+                    unity::V3 hit{};int i=lz*5+lx;localValid[i]=ray(movement,p,hit);
+                    if(localValid[i]) localHeight[i]=toMc(hit).y;
+                }
+                for(int lz=0;lz<4;++lz) for(int lx=0;lx<4;++lx) {
+                    int a=lz*5+lx,b=a+1,c=a+5,d=c+1;
+                    if(!localValid[a]||!localValid[b]||!localValid[c]||!localValid[d]) continue;
+                    float low=(std::min)({localHeight[a],localHeight[b],localHeight[c],localHeight[d]});
+                    float high=(std::max)({localHeight[a],localHeight[b],localHeight[c],localHeight[d]});
+                    if(high-low>.75f) continue;
+                    const float px=minX+x+lx*.25f,pz=minZ+z+lz*.25f;
+                    triangles.push_back({{px,localHeight[a],pz,px,localHeight[c],pz+.25f,px+.25f,localHeight[b],pz},proto::kTriTerrain});
+                    triangles.push_back({{px+.25f,localHeight[b],pz,px,localHeight[c],pz+.25f,px+.25f,localHeight[d],pz+.25f},proto::kTriTerrain});
+                    minY=(std::min)(minY,int(std::floor(low/8))*8-8);
+                }
+                continue;
+            }
             int a=z*9+x,b=a+1,c=a+9,d=c+1;
             if(!valid[a]||!valid[b]||!valid[c]||!valid[d]) continue;
             float low=(std::min)({heights[a],heights[b],heights[c],heights[d]}),high=(std::max)({heights[a],heights[b],heights[c],heights[d]});
@@ -244,7 +271,7 @@ public:
                     unity::Api::TemporaryRoot root(api.raw(),encoded);
                     auto length=reinterpret_cast<std::uintptr_t(*)(void*)>(GetProcAddress(GetModuleHandleW(L"GameAssembly.dll"),"il2cpp_array_length"));
                     const auto n=length?length(encoded):0;if(!n||n>64ull*1024*1024) throw std::runtime_error("capture encoding invalid");
-                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay15-frame.png",std::ios::binary);
+                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay18-frame.png",std::ios::binary);
                     output.write(reinterpret_cast<const char*>(encoded)+32,std::streamsize(n));if(!output) throw std::runtime_error("capture write failed");
                     api.destroy(image);
                 } catch(const std::exception& e) {captureError=e.what();}
@@ -269,6 +296,8 @@ public:
     std::vector<SavedRenderer> savedRenderers;
     void* visualModel=nullptr;
     std::uint32_t visualModelHandle=0;
+    void* nativeRenderHelper=nullptr;
+    std::uint32_t nativeRenderHelperRoot=0;
     bool visualModelWasActive=false;
     int hideAttempts=0;
     static constexpr std::size_t kArrayPrefixBytes=32;
@@ -281,11 +310,14 @@ public:
             }
             for(const auto& saved:savedRenderers) {
                 try {
+                    if(nativeRenderHelper) api.call(api.method("EntityRenderHelper","ResetVisibleByRenderer","UnityEngine.Renderer","System.Void","Gameplay.Beyond.dll","Beyond.Gameplay.View"),nativeRenderHelper,{saved.object});
                     bool enabledBefore=saved.enabled;
                     api.call(api.method("Renderer","set_enabled","System.Boolean"),saved.object,{&enabledBefore});
                 } catch(const std::exception& e) {hideError=e.what();}
                 api.raw()->gchandle_free(api.raw()->context,saved.handle);
             }
+            if(nativeRenderHelperRoot) api.raw()->gchandle_free(api.raw()->context,nativeRenderHelperRoot);
+            nativeRenderHelper=nullptr;nativeRenderHelperRoot=0;
             savedRenderers.clear();characterHidden=false;hiddenRendererCount=0;return;
         }
         if(hideFailed||!characterObject||characterHidden) return;
@@ -312,16 +344,22 @@ public:
                 savedRenderers.push_back({slots[i],wasEnabled,handle});
                 api.call(api.method("Renderer","set_enabled","System.Boolean"),slots[i],{&show});
             }
-            // HGRP may continue drawing its cached character proxies after the
-            // stock Renderer flag changes. Disable only the visual model child.
+            // Hide HGRP's own renderer proxies while leaving Animator/timelines active.
+            // Deactivating the model child also stops the native combat animation graph.
             auto* model=api.call(api.method("Entity","get_modelCom","","Beyond.Gameplay.View.ModelComponent","Gameplay.Beyond.dll","Beyond.Gameplay.Core"),characterObject);
             if(model) {
+                nativeRenderHelper=api.call(api.method("BaseModelComponent","get_entityRenderHelper","","Beyond.Gameplay.View.EntityRenderHelper","Gameplay.Beyond.dll","Beyond.Gameplay.View"),model);
+                if(!nativeRenderHelper) throw std::runtime_error("native render helper not ready");
+                nativeRenderHelperRoot=api.raw()->gchandle_new(api.raw()->context,nativeRenderHelper,0);
+                if(!nativeRenderHelperRoot) throw std::runtime_error("native render helper root failed");
+                bool hidden=false;
+                for(const auto& saved:savedRenderers) api.call(api.method("EntityRenderHelper","SetVisibleByRenderer","UnityEngine.Renderer|System.Boolean","System.Void","Gameplay.Beyond.dll","Beyond.Gameplay.View"),nativeRenderHelper,{saved.object,&hidden});
                 auto* modelGo=api.call(api.method("BaseModelComponent","GetModelGo","","UnityEngine.GameObject","Gameplay.Beyond.dll","Beyond.Gameplay.View"),model);
                 if(modelGo&&modelGo!=object) {
                     visualModelWasActive=api.value<bool>(api.method("GameObject","get_activeSelf","","System.Boolean"),modelGo);
                     visualModelHandle=api.raw()->gchandle_new(api.raw()->context,modelGo,0);
                     if(!visualModelHandle) throw std::runtime_error("visual model root allocation failed");
-                    visualModel=modelGo;api.setActive(visualModel,false);
+                    visualModel=modelGo;
                 }
             }
             characterHidden=!show;hideAttempts=0;
@@ -372,12 +410,13 @@ public:
             if(!requested.load()||!valid||!living||cinematic||!character||!movement) {
                 rawX.exchange(0);rawY.exchange(0);lookInitialized=false;
                 inputMask.release();
-                if(active) {input(false);cursor(false);renderer.visible(false);setCharacterVisible(true);active=false;}
+                if(active) {input(false);cursor(false);renderer.visible(false);setCharacterVisible(true);combat.stop(memory);active=false;}
                 guard.hide=true;
                 proto::SkyState state{};state.flags=proto::kSkyLoading|proto::kSkyMenuOpen;state.worldId=epoch;state.collisionEpoch=epoch;
                 memory.sky(state);return;
             }
             api.bind(host);
+            combat.bind(host);
             if(!initialized) {
                 epoch=std::uint32_t(GetTickCount64())|1u;teleport=epoch;
                 origin=suppliedAnchor?initialHost:where;safeHost=where;characterId=reinterpret_cast<std::uintptr_t>(character);
@@ -397,7 +436,7 @@ public:
                 // re-resolve the renderers instead of carrying a stale failure forward.
                 setCharacterVisible(true);characterHidden=false;hideFailed=false;hideAttempts=0;
                 input(false);renderer.visible(false);
-                origin=where;safeHost=where;terrainIndex=4;characterId=reinterpret_cast<std::uintptr_t>(character);
+                origin=where;safeHost=where;terrainIndex=4;terrainCenterX=terrainCenterZ=INT_MIN;characterId=reinterpret_cast<std::uintptr_t>(character);
                 characterObject=character;renderer.reanchor(origin);
                 ++epoch;teleport=epoch;guestReady=false;
                 memory.collision(proto::kColClear,&epoch,sizeof(epoch));
@@ -415,6 +454,7 @@ public:
             if(hostMenu) {
                 rawX.exchange(0);rawY.exchange(0);lookInitialized=false;
                 inputMask.release();
+                combat.stop(memory);
                 input(false);cursor(false);renderer.visible(false);setCharacterVisible(true);
                 guestReady=false;guard.hide=true;
                 proto::SkyState paused{};paused.flags=proto::kSkyLoading|proto::kSkyMenuOpen;paused.worldId=epoch;paused.collisionEpoch=epoch;
@@ -433,7 +473,13 @@ public:
             proto::SkyState state{};state.flags=proto::kSkyInGame|(focus?0u:proto::kSkyMenuOpen);state.worldId=epoch;state.collisionEpoch=epoch;
             state.posX=teleportPosition.x;state.posY=teleportPosition.y;state.posZ=teleportPosition.z;state.teleportSeq=teleport;
             state.yaw=std::remainder(lookAngles.yaw-180.f,360.f);state.pitch=lookAngles.pitch;
-            state.viewportW=640;state.viewportH=360;state.gameHour=12;memory.sky(state);
+            const int screenW=api.value<int>(api.method("Screen","get_width","","System.Int32"));
+            const int screenH=api.value<int>(api.method("Screen","get_height","","System.Int32"));
+            if(screenW>0&&screenH>0) {
+                const double factor=(std::min)({1.0,double(proto::kMaxOverlayW)/screenW,double(proto::kMaxOverlayH)/screenH});
+                viewportW=(std::max)(1,int(screenW*factor));viewportH=(std::max)(1,int(screenH*factor));
+            }
+            state.viewportW=viewportW;state.viewportH=viewportH;state.gameHour=12;memory.sky(state);
             proto::McState mc{};
             const bool ready=memory.mc(mc)&&(mc.flags&proto::kMcInWorld)&&mc.teleportAck==teleport;
             lastMc=mc;guestReady=ready;
@@ -453,15 +499,21 @@ public:
             }
             if(ready&&poseOk) {
                 auto desired=toHost(mcPosition);
-                unity::V3 floor{};auto test=desired;test.y=(std::max)(desired.y,safeHost.y)+4;
+                unity::V3 floor{};auto test=desired;test.y=desired.y+.75f;
                 bool measured=false;
                 {HostTerrainQuery query(renderer);measured=ray(movement,test,floor);}
                 if((mc.flags&proto::kMcDead)||(measured&&desired.y<floor.y-.75f)
                    ||(!measured&&desired.y<safeHost.y-3.f)) {
                     ++safetyStops;
+                    lastRecoveryReason=(mc.flags&proto::kMcDead)?"guest_dead":(measured?"below_measured_floor":"unmeasured_drop");
                     bool warning=false;
                     api.call(api.method("MovementComponent","TeleportTo","UnityEngine.Vector3|System.Boolean","System.Void",gameAssembly,gameSpace),movement,{&safeHost,&warning});
-                    throw std::runtime_error("guest left verified terrain; host restored to last safe position");
+                    // Recover both processes together instead of disabling the bridge and
+                    // leaving Minecraft frozen below the playable world for the session.
+                    teleportPosition=toMc(safeHost);++teleport;guestReady=false;
+                    memory.input({proto::kInReleaseAll,0,0,0,0});
+                    std::fill(std::begin(keys),std::end(keys),false);std::fill(std::begin(buttons),std::end(buttons),false);
+                    inputMask.release();combat.stop(memory);guard.hide=true;return;
                 }
                 if(measured&&desired.y>=floor.y-.1f&&desired.y-floor.y<1.f) safeHost=desired;
                 // Hold the body on Minecraft's player whenever Minecraft is in the world, not only
@@ -494,6 +546,7 @@ public:
                 if(std::isfinite(mc.fovDeg)&&mc.fovDeg>10&&mc.fovDeg<150) api.call(api.method("Camera","set_fieldOfView","System.Single"),camera,{&mc.fovDeg});
             }
             if(renderer.ready) renderer.overlay(memory);
+            if(ready&&poseOk) combat.tick(character,where,origin,mcOrigin,memory);
             if(renderer.ready&&frames%60==0) visibleMeshes=renderer.visibleMeshes();
         } catch(const std::exception& e) {
             inputMask.release();
@@ -509,7 +562,8 @@ public:
             {"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
             {"render_error",renderError},{"character_hide_error",hideError},{"guest_ready",guestReady},
             {"hidden_renderer_count",hiddenRendererCount},
-            {"visual_model_hidden",visualModel!=nullptr},
+            {"visual_model_hidden",nativeRenderHelper!=nullptr},
+            {"native_animation_model_kept_active",visualModel!=nullptr&&visualModelWasActive},
             {"host_input_mask",inputMask.snapshot()},
             {"scroll_error",scrollError},
             {"pipeline_frames",pipelineFrames},{"pipeline_draw_commands",pipelineDraws},{"pipeline_error",pipelineError},
@@ -518,10 +572,13 @@ public:
             {"raw_mouse_hook",rawReady.load()},{"look_yaw_degrees",lookAngles.yaw},{"look_pitch_degrees",lookAngles.pitch},
             {"independent_mc_depth",renderer.independentDepth()},
             {"raw_mouse_packets",rawPackets.load()},
+            {"requested_hud_resolution",{viewportW,viewportH}},
+            {"guest_fall_flying",bool(lastMc.flags&proto::kMcFallFlying)},
+            {"combat",combat.snapshot()},
             {"renderer_probe",renderer.probeResult},{"native_rendering",renderer.nativeRendering},{"host_camera_distance",cameraDistanceUsed},
             {"world_render_path",renderer.nativeRendering?"native_hgrp_scene":"independent_depth_overlay"},
             {"host_menu",hostMenu},
-            {"terrain_samples",terrainSamples},{"terrain_ray_hits",terrainHits},{"terrain_triangles",terrainTriangles},{"safety_stops",safetyStops},
+            {"terrain_samples",terrainSamples},{"terrain_ray_hits",terrainHits},{"terrain_triangles",terrainTriangles},{"safety_stops",safetyStops},{"last_recovery_reason",lastRecoveryReason},
             {"avatar_vertices",renderer.avatarVertices},{"loaded_sections",renderer.sectionCount()},{"loaded_textures",renderer.textureCount()},
             {"visible_meshes",visibleMeshes},{"world_layer",renderer.layer()},{"camera_culling_mask",renderer.mask()},
             {"world_epoch",epoch},{"guest_camera_mode",lastMc.cameraMode},{"guest_camera_distance",lastMc.cameraDistance},

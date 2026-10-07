@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstring>
 #include <stdexcept>
+#include <algorithm>
 
 namespace endcraft {
 namespace proto=skycraft::proto;
@@ -73,6 +74,22 @@ public:
     }
     bool render(std::uint32_t& type,std::vector<unsigned char>& payload) {
         return readRenderMessage(data+proto::kOffRenderRing,proto::kRenRingDataBytes,type,payload);
+    }
+    void actors(const std::vector<proto::ActorRecord>& records) {
+        if(!data) return;
+        auto* table=reinterpret_cast<proto::ActorTable*>(data+proto::kOffActorTable);
+        InterlockedIncrement(reinterpret_cast<volatile LONG*>(&table->seq));MemoryBarrier();
+        table->count=std::uint32_t((std::min)(records.size(),std::size_t(proto::kMaxActors)));
+        if(table->count) std::memcpy(table->actors,records.data(),table->count*sizeof(proto::ActorRecord));
+        MemoryBarrier();InterlockedIncrement(reinterpret_cast<volatile LONG*>(&table->seq));
+    }
+    bool event(proto::McEvent& event) {
+        if(!data) return false;
+        auto* base=data+proto::kOffEventRing;const auto head=acquire64(base),tail=acquire64(base+0x40);
+        if(head<tail||head-tail>proto::kEventRingEntries) throw std::runtime_error("combat ring invalid counters");
+        if(head==tail) return false;
+        std::memcpy(&event,base+0x80+(tail%proto::kEventRingEntries)*sizeof(event),sizeof(event));
+        MemoryBarrier();release64(base+0x40,tail+1);return true;
     }
 };
 }

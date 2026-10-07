@@ -27,6 +27,7 @@ public final class FrameExporter {
 	private static final Staging[] staging = new Staging[STAGING];
 	private static long nextFrameId = 1;
 	private static boolean loggedFormat;
+	private static long lastCaptureNanos;
 
 	private static final class Staging {
 		GpuBuffer buffer;
@@ -41,6 +42,9 @@ public final class FrameExporter {
 
 	public static void capture(Minecraft minecraft) {
 		shipReadyFrames();
+		long now = System.nanoTime();
+		// Full-resolution HUD readback need not run at the host's uncapped scene rate.
+		if (now - lastCaptureNanos < 33_333_333L) return;
 
 		RenderTarget target = minecraft.gameRenderer.mainRenderTarget();
 		GpuTexture color = target.getColorTexture();
@@ -88,6 +92,7 @@ public final class FrameExporter {
 		final Staging captured = slot;
 		captured.state = PENDING;
 		captured.frameId = nextFrameId++;
+		lastCaptureNanos = now;
 		RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(color, captured.buffer, 0L, () -> captured.state = READY, 0);
 	}
 

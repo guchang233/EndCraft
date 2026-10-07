@@ -67,6 +67,6 @@ def main(old_kind='gameplay',new_kind='gameplay2'):
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser()
-    parser.add_argument('--old',choices=['gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15'],default='gameplay')
-    parser.add_argument('--new',choices=['gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15'],default='gameplay2')
+    parser.add_argument('--old',choices=['gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18'],default='gameplay')
+    parser.add_argument('--new',choices=['gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18'],default='gameplay2')
     args=parser.parse_args();main(args.old,args.new)

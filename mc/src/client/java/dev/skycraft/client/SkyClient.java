@@ -357,6 +357,7 @@ public final class SkyClient {
 			if (player.getAbilities().flying) {
 				flags |= Proto.MC_FLYING;
 			}
+			if (player.isFallFlying()) flags |= Proto.MC_FALL_FLYING;
 			mc.x = feet.x;
 			mc.y = feet.y;
 			mc.z = feet.z;
@@ -428,7 +429,7 @@ public final class SkyClient {
 		options.pauseOnLostFocus = false;
 		options.vignette().set(false);
 		options.enableVsync().set(false);
-		options.framerateLimit().set(260);
+		options.framerateLimit().set(120);
 		// Minecraft doesn't draw the world itself; these only decide how far out placed blocks,
 		// arrows and Skyrim NPC stand-ins stay loaded and simulated.
 		options.renderDistance().set(8);
@@ -459,7 +460,10 @@ public final class SkyClient {
 		}
 		appliedViewportW = w;
 		appliedViewportH = h;
+		// Keep roughly the previous logical HUD size while drawing every physical pixel.
 		minecraft.getWindow().setWindowed(w, h);
+		minecraft.options.guiScale().set(Math.max(1, Math.min(w / 640, h / 360)));
+		minecraft.resizeGui();
 		SkyCraft.LOG.info("SkyCraft: sizing overlay to Skyrim viewport {}x{}", w, h);
 	}
 }

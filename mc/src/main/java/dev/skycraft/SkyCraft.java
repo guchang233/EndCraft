@@ -28,8 +28,26 @@ public final class SkyCraft implements ModInitializer {
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			giveStarterKit(handler.getPlayer());
 			giveBuilderKit(handler.getPlayer());
+			repairFlightEquipment(handler.getPlayer());
 			dressTestGuest(handler.getPlayer());
 		});
+	}
+
+	/** The bridge's starter wings are reusable equipment; worn-out wings cannot deploy. */
+	private static void repairFlightEquipment(ServerPlayer player) {
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.getContainerSize(); ++i) {
+			ItemStack stack = inventory.getItem(i);
+			if (stack.is(Items.ELYTRA)) {
+				stack.setDamageValue(0);
+				stack.set(net.minecraft.core.component.DataComponents.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
+			}
+		}
+		ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
+		if (chest.is(Items.ELYTRA)) {
+			chest.setDamageValue(0);
+			chest.set(net.minecraft.core.component.DataComponents.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
+		}
 	}
 
 	/** The mirror world is a void that only exists to host the player; Skyrim drives time and spawning. */
