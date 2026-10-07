@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "skycraft",
+  "version": "${version}",
+  "name": "EndCraft Guest",
+  "description": "SkyCraft-derived Minecraft guest for the experimental EndCraft Endfield bridge. Combat and elytra support remain incomplete in 1.0.0.",
+  "authors": [
+    "chasmlol (SkyCraft upstream)",
+    "EndCraft adaptation"
+  ],
+  "contact": {
+    "sources": "https://github.com/guchang233/EndCraft"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "dev.skycraft.SkyCraft"
+    ],
+    "client": [
+      "dev.skycraft.client.SkyCraftClient"
+    ]
+  },
+  "mixins": [
+    "skycraft.mixins.json",
+    {
+      "config": "skycraft.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

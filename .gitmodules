@@ -1,0 +1,6 @@
+[submodule "third_party/Better-Endfield"]
+	path = third_party/Better-Endfield
+	url = https://github.com/Dr-hydra/Better-Endfield.git
+[submodule "third_party/SkyCraft"]
+	path = third_party/SkyCraft
+	url = https://github.com/chasmlol/SkyCraft.git

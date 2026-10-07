@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>EndCraft 接入验证</title>
+<style>body{background:#171b21;color:#e3e8ef;font:15px/1.7 system-ui;margin:32px;max-width:1000px}button{background:#d9e853;color:#141718;border:0;padding:10px 18px;margin:4px 8px 4px 0;cursor:pointer}pre{background:#0e1116;border:1px solid #39424e;padding:20px;overflow:auto;white-space:pre-wrap}small{color:#b0bac8}h1{font-size:26px}</style>
+<h1>EndCraft · 接入验证</h1><p>检查 MC 连接和宿主方法。相机观察只读取数据。角色接管、建造、NPC 碰撞和战斗尚未完成实机验证。</p>
+<button data-action="status">读取状态</button><button data-action="probe">解析方法</button><button data-action="observe">开始只读相机观察</button><button id="export">导出当前报告</button>
+<p id="status">等待 Better-Endfield 模块连接</p><pre id="report">尚未收到运行结果</pre>
+<script>
+const output=document.querySelector('#report'),statusLine=document.querySelector('#status');let latest=null;
+const bridge=window.betterEndfield;
+if(bridge){
+bridge.onmessage(message=>{if(message.kind==='reply'){latest=message.body;output.textContent=JSON.stringify(latest,null,2);statusLine.textContent=message.result===0?'收到模块运行结果':'模块报告失败，见详情';}});
+document.querySelectorAll('[data-action]').forEach(button=>button.onclick=async()=>{try{const response=await bridge.send({action:button.dataset.action});statusLine.textContent=response?.accepted===false?'请求未被接收':'请求已发送，等待执行结果';}catch(e){statusLine.textContent=String(e);}});
+}else{statusLine.textContent='请通过 Better-Endfield 的第三方模块页面打开此面板。';}
+document.querySelector('#export').onclick=()=>{if(!latest)return;const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([JSON.stringify(latest,null,2)],{type:'application/json'}));link.download='endcraft-runtime-report.json';link.click();URL.revokeObjectURL(link.href);};
+</script></html>

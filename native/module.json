@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "id": "endcraft.probe",
+  "name": "EndCraft 接入验证",
+  "author": "EndCraft project",
+  "version": "0.1.0",
+  "abi": 1,
+  "libraries": {"windows-x64": "native/windows-x64/endcraft.probe.dll"},
+  "ui": "ui/index.html",
+  "default_configuration": {},
+  "dependencies": []
+}
