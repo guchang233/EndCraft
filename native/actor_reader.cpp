@@ -381,6 +381,7 @@ BE_Result BE_CALL message(const char* request,const char* body) {
         }
 #endif
 #ifdef ENDCRAFT_GAMEPLAY
+        if(action=="recover") {gameplay.recover();return host.reply(host.context,request,BE_Result_Ok,"{\"recovery_queued\":true}");}
         if(action=="renderer_probe") {gameplay.rendererProbe();return host.reply(host.context,request,BE_Result_Ok,"{\"probe_queued\":true}");}
         if(action=="native_rendering") {gameplay.nativeRendering(json::parse(body).at("enabled").get<bool>());return host.reply(host.context,request,BE_Result_Ok,"{\"render_mode_queued\":true}");}
         if(action=="look") {

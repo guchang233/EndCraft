@@ -29,6 +29,11 @@ public final class SkyCraft implements ModInitializer {
 			giveStarterKit(handler.getPlayer());
 			giveBuilderKit(handler.getPlayer());
 			repairFlightEquipment(handler.getPlayer());
+            var player = handler.getPlayer();
+            if (server.getWorldData().getLevelName().equals(WORLD_NAME) && dev.skycraft.net.SkyNet.isHost(player)
+                    && !server.getPlayerList().isOp(player.nameAndId())) {
+                server.getPlayerList().op(player.nameAndId());
+            }
 			dressTestGuest(handler.getPlayer());
 		});
 	}

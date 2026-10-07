@@ -101,6 +101,7 @@ namespace skycraft::proto
 		kMcSwimming = 1u << 6,
 		kMcFlying = 1u << 7,
 		kMcFallFlying = 1u << 8,
+        kMcRecover = 1u << 9,
 	};
 
 	struct McState

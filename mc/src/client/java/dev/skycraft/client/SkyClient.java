@@ -36,7 +36,10 @@ public final class SkyClient {
 	private static int teleportAck;
 	private static boolean teleportPending;
 	private static LocalPlayer lastPlayer;
+	private static net.minecraft.client.CameraType lastLivingCamera = net.minecraft.client.CameraType.THIRD_PERSON_BACK;
+	private static boolean hadPlayer;
 	private static Vec3 holdPos;
+    private static boolean recoveryRequested;
 	private static Vec3 unlinkedHold;
 	private static long holdSince;
 	private static long qpcFreq;
@@ -47,7 +50,12 @@ public final class SkyClient {
 	private static boolean skyrimStalled;
 	private static int exporterErrors;
 
-	private SkyClient() {
+	public static void requestRecovery() {
+        recoveryRequested = true;
+        Minecraft.getInstance().options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+    }
+
+    private SkyClient() {
 	}
 
 	public static boolean linked() {
@@ -121,11 +129,15 @@ public final class SkyClient {
 
 		// A new player object means we just joined or respawned: put it where Skyrim's player is.
 		if (player != lastPlayer) {
+			// Vanilla resets the camera during respawn. Retain the user's last living view.
+			if (hadPlayer) minecraft.options.setCameraType(lastLivingCamera);
+			hadPlayer = true;
 			lastPlayer = player;
 			teleportPending = true;
 		}
 		if (sky.teleportSeq != lastTeleportSeq) {
 			lastTeleportSeq = sky.teleportSeq;
+            recoveryRequested = false;
 			teleportPending = true;
 		}
 		if (teleportPending && sky.inGame() && !sky.loading()) {
@@ -309,6 +321,7 @@ public final class SkyClient {
 		LocalPlayer player = minecraft.player;
 		player.setPos(x, y, z);
 		player.setDeltaMovement(Vec3.ZERO);
+        player.stopFallFlying();
 		player.resetFallDistance();
 		var server = minecraft.getSingleplayerServer();
 		if (server != null) {
@@ -316,7 +329,8 @@ public final class SkyClient {
 			server.execute(() -> {
 				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 				if (sp != null) {
-					sp.teleportTo(x, y, z);
+					sp.stopFallFlying();
+                    sp.teleportTo(x, y, z);
 					sp.setYRot(yaw);
 					sp.setXRot(pitch);
 					sp.resetFallDistance();
@@ -339,6 +353,7 @@ public final class SkyClient {
 			Vec3 feet = player.getPosition(partial);
 			Camera camera = minecraft.gameRenderer.mainCamera();
 			flags |= Proto.MC_IN_WORLD;
+            if (recoveryRequested) flags |= Proto.MC_RECOVER;
 			if (player.onGround()) {
 				flags |= Proto.MC_ON_GROUND;
 			}
@@ -372,6 +387,11 @@ public final class SkyClient {
 			mc.fov = camera.getFov();
 			// Minecraft's F5 camera: Skyrim puts its camera where Minecraft's would be.
 			mc.cameraMode = minecraft.options.getCameraType().ordinal();
+			// A respawn packet can replace the player after beginFrame; do not remember
+			// its temporary first-person camera before the next frame restores it.
+			if (player == lastPlayer && !player.isDeadOrDying()) {
+				lastLivingCamera = minecraft.options.getCameraType();
+			}
 			mc.cameraDistance = camera.isDetached() ? (float) camera.position().distanceTo(player.getEyePosition(partial)) : 0.0F;
 			// Walk bob, exactly what GameRenderer.bobView() uses this frame.
 			var entityState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState.entityRenderState;

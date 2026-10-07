@@ -62,7 +62,10 @@ class GameplayBridge {
     std::string captureError;
     bool hostMenu=false;
     std::string queuedShader;
-    std::atomic<bool> rejoin=false;
+    std::atomic<bool> rejoin=false,recovery=false;
+    bool mcRecoveryHeld=false,mcWasDead=false,recoveryShortcutHeld=false;
+    std::uint64_t holdStarted=0,recoveryCount=0;
+    std::uint64_t keyRepeatAt[256]{};
     std::atomic<long> rawX=0,rawY=0;
     std::atomic<bool> rawReady=false;
     std::atomic<std::uint64_t> rawPackets=0;
@@ -94,12 +97,36 @@ class GameplayBridge {
                 memory.input({proto::kInCursor,0,int(point.x*static_cast<long long>(viewportW)/bounds.right),int(point.y*static_cast<long long>(viewportH)/bounds.bottom),0});
         }
         // Preserve Minecraft's SDL scancodes for inventory and camera controls.
-        const int keyPairs[][2]={{'W',26},{'A',4},{'S',22},{'D',7},{VK_SPACE,44},{VK_LSHIFT,225},{VK_LCONTROL,224},
+        const bool recoverDown=focus&&(GetAsyncKeyState(VK_CONTROL)&0x8000)&&(GetAsyncKeyState(VK_MENU)&0x8000)&&(GetAsyncKeyState('R')&0x8000);
+        if(recoverDown&&!recoveryShortcutHeld) recovery.store(true);
+        recoveryShortcutHeld=recoverDown;
+        if(recoverDown) return;
+        const int keyPairs[][2]={{VK_LSHIFT,225},{VK_RSHIFT,229},{VK_LCONTROL,224},{VK_RCONTROL,228},{VK_LMENU,226},{VK_RMENU,230},{'T',23},{VK_OEM_2,56},{VK_RETURN,40},{VK_BACK,42},{VK_TAB,43},
+            {VK_LEFT,80},{VK_RIGHT,79},{VK_UP,82},{VK_DOWN,81},{VK_HOME,74},{VK_END,77},{VK_DELETE,76},
+            {'B',5},{'C',6},{'G',10},{'H',11},{'I',12},{'J',13},{'K',14},{'L',15},{'M',16},{'N',17},{'O',18},{'P',19},{'R',21},{'U',24},{'V',25},{'X',27},{'Y',28},{'Z',29},
+            {VK_OEM_1,51},{VK_OEM_PLUS,46},{VK_OEM_COMMA,54},{VK_OEM_MINUS,45},{VK_OEM_PERIOD,55},{VK_OEM_3,53},{VK_OEM_4,47},{VK_OEM_5,49},{VK_OEM_6,48},{VK_OEM_7,52},
+            {'W',26},{'A',4},{'S',22},{'D',7},{VK_SPACE,44},
             {'E',8},{'Q',20},{'F',9},{VK_F5,62},{VK_ESCAPE,41},{'1',30},{'2',31},{'3',32},{'4',33},{'5',34},{'6',35},{'7',36},{'8',37},{'9',38},{'0',39}};
         for(const auto& pair:keyPairs) {
             const bool down=focus&&(GetAsyncKeyState(pair[0])&0x8000)!=0;
-            if(down!=keys[pair[0]]) {
-                if(memory.input({proto::kInKey,std::uint16_t(pair[1]),down?1:0,0,0})) keys[pair[0]]=down;
+            const auto now=GetTickCount64();
+            const bool repeat=down&&keys[pair[0]]&&(lastMc.flags&proto::kMcScreenOpen)&&now>=keyRepeatAt[pair[0]];
+            if(down!=keys[pair[0]]||repeat) {
+                if(memory.input({proto::kInKey,std::uint16_t(pair[1]),down?1:0,0,0})) {
+                    const bool wasDown=keys[pair[0]];keys[pair[0]]=down;
+                    keyRepeatAt[pair[0]]=now+(wasDown?50:500);
+                    if(down&&(lastMc.flags&proto::kMcScreenOpen)) {
+                        BYTE state[256]{};GetKeyboardState(state);
+                        for(int i=0;i<256;++i) state[i]=(state[i]&1)|((GetAsyncKeyState(i)&0x8000)?0x80:0);
+                        wchar_t chars[8]{};auto layout=GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow(),nullptr));
+                        const auto count=ToUnicodeEx(UINT(pair[0]),MapVirtualKeyExW(UINT(pair[0]),MAPVK_VK_TO_VSC,layout),state,chars,8,4,layout);
+                        for(int i=0;i<count;++i) if(chars[i]>=32&&chars[i]!=127) {
+                            std::uint32_t code=chars[i];
+                            if(code>=0xd800&&code<=0xdbff&&i+1<count&&chars[i+1]>=0xdc00&&chars[i+1]<=0xdfff) code=0x10000+((code-0xd800)<<10)+(chars[++i]-0xdc00);
+                            memory.input({proto::kInText,0,int(code),0,0});
+                        }
+                    }
+                }
             }
         }
         const int mousePairs[][2]={{VK_LBUTTON,1},{VK_MBUTTON,2},{VK_RBUTTON,3}};
@@ -230,6 +257,7 @@ public:
         if(!std::isfinite(host.x)||!std::isfinite(host.y)||!std::isfinite(host.z)||!std::isfinite(guest.x)||!std::isfinite(guest.y)||!std::isfinite(guest.z)) throw std::runtime_error("nonfinite initial anchor");
         initialHost=host;teleportPosition=guest;suppliedAnchor=true;
     }
+    void recover() {requested.store(true);recovery.store(true);}
     void enable(bool value) {if(value&&!requested.exchange(true)) rejoin.store(true);else if(!value) requested.store(false);}
     void capture() {std::lock_guard lock(mutex);captured=false;captureError.clear();}
     void shader(const std::string& name) {std::lock_guard lock(mutex);queuedShader=name;}
@@ -271,7 +299,7 @@ public:
                     unity::Api::TemporaryRoot root(api.raw(),encoded);
                     auto length=reinterpret_cast<std::uintptr_t(*)(void*)>(GetProcAddress(GetModuleHandleW(L"GameAssembly.dll"),"il2cpp_array_length"));
                     const auto n=length?length(encoded):0;if(!n||n>64ull*1024*1024) throw std::runtime_error("capture encoding invalid");
-                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay19-frame.png",std::ios::binary);
+                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay21-frame.png",std::ios::binary);
                     output.write(reinterpret_cast<const char*>(encoded)+32,std::streamsize(n));if(!output) throw std::runtime_error("capture write failed");
                     api.destroy(image);
                 } catch(const std::exception& e) {captureError=e.what();}
@@ -427,8 +455,8 @@ public:
                 unsigned alignment=0;if(!valueSize||valueSize(cls.class_info,&alignment)>512) throw std::runtime_error("RaycastHit ABI unsupported");
                 memory.collision(proto::kColClear,&epoch,sizeof(epoch));
             }
-            // Only a genuinely different character means a different scene. A body that merely
-            // drifted away from the anchor is recoverable and the teleport below pulls it back.
+            // Party switches and host respawns replace the body without replacing the world.
+            // Preserve the world anchor and seed the guest at the new body's real feet.
             if(characterId!=reinterpret_cast<std::uintptr_t>(character)) {
                 lookInitialized=false;
                 inputMask.release();
@@ -436,8 +464,8 @@ public:
                 // re-resolve the renderers instead of carrying a stale failure forward.
                 setCharacterVisible(true);characterHidden=false;hideFailed=false;hideAttempts=0;
                 input(false);renderer.visible(false);
-                origin=where;safeHost=where;terrainIndex=4;terrainCenterX=terrainCenterZ=INT_MIN;characterId=reinterpret_cast<std::uintptr_t>(character);
-                characterObject=character;renderer.reanchor(origin);
+                safeHost=where;teleportPosition=toMc(where);terrainIndex=4;terrainCenterX=terrainCenterZ=INT_MIN;characterId=reinterpret_cast<std::uintptr_t>(character);
+                characterObject=character;holdStarted=0;
                 ++epoch;teleport=epoch;guestReady=false;
                 memory.collision(proto::kColClear,&epoch,sizeof(epoch));
                 error.clear();
@@ -481,7 +509,27 @@ public:
             }
             state.viewportW=viewportW;state.viewportH=viewportH;state.gameHour=12;memory.sky(state);
             proto::McState mc{};
-            const bool ready=memory.mc(mc)&&(mc.flags&proto::kMcInWorld)&&mc.teleportAck==teleport;
+            const bool fresh=memory.mc(mc);
+            const bool mcDead=fresh&&(mc.flags&proto::kMcDead);
+            const bool mcRecover=fresh&&(mc.flags&proto::kMcRecover);
+            if(mcRecover&&!mcRecoveryHeld) recovery.store(true);
+            mcRecoveryHeld=mcRecover;
+            if(mcDead&&!mcWasDead) recovery.store(true);
+            mcWasDead=mcDead;
+            bool ready=fresh&&(mc.flags&proto::kMcInWorld)&&!mcDead&&mc.teleportAck==teleport;
+            if(!ready&&fresh&&!mcDead&&(mc.flags&proto::kMcInWorld)) {
+                if(!holdStarted) holdStarted=GetTickCount64();
+                if(GetTickCount64()-holdStarted>5000) {recovery.store(true);holdStarted=GetTickCount64();}
+            } else holdStarted=0;
+            if(recovery.exchange(false)) {
+                unity::V3 floor{},at=where;at.y+=.75f;
+                {HostTerrainQuery query(renderer);if(ray(movement,at,floor)&&where.y>=floor.y-.75f&&where.y-floor.y<2.5f) where.y=(std::max)(where.y,floor.y+.02f);}
+                safeHost=where;teleportPosition=toMc(where);++teleport;++recoveryCount;ready=false;
+                hideFailed=false;hideAttempts=0;setCharacterVisible(true);
+                terrainIndex=4;terrainCenterX=terrainCenterZ=INT_MIN;
+                state.posX=teleportPosition.x;state.posY=teleportPosition.y;state.posZ=teleportPosition.z;state.teleportSeq=teleport;memory.sky(state);
+                memory.input({proto::kInReleaseAll,0,0,0,0});
+            }
             lastMc=mc;guestReady=ready;
             if(ready) inputMask.apply(character);else inputMask.release();
             if(ready&&!characterHidden&&!hideFailed) setCharacterVisible(false);
@@ -502,7 +550,7 @@ public:
                 unity::V3 floor{};auto test=desired;test.y=desired.y+.75f;
                 bool measured=false;
                 {HostTerrainQuery query(renderer);measured=ray(movement,test,floor);}
-                if((mc.flags&proto::kMcDead)||(measured&&desired.y<floor.y-.75f)
+                if((measured&&desired.y<floor.y-.75f)
                    ||(!measured&&desired.y<safeHost.y-3.f)) {
                     ++safetyStops;
                     lastRecoveryReason=(mc.flags&proto::kMcDead)?"guest_dead":(measured?"below_measured_floor":"unmeasured_drop");
@@ -510,7 +558,7 @@ public:
                     api.call(api.method("MovementComponent","TeleportTo","UnityEngine.Vector3|System.Boolean","System.Void",gameAssembly,gameSpace),movement,{&safeHost,&warning});
                     // Recover both processes together instead of disabling the bridge and
                     // leaving Minecraft frozen below the playable world for the session.
-                    teleportPosition=toMc(safeHost);++teleport;guestReady=false;
+                    recovery.store(true);guestReady=false;
                     memory.input({proto::kInReleaseAll,0,0,0,0});
                     std::fill(std::begin(keys),std::end(keys),false);std::fill(std::begin(buttons),std::end(buttons),false);
                     inputMask.release();combat.stop(memory);guard.hide=true;return;
@@ -559,7 +607,7 @@ public:
         std::lock_guard lock(mutex);
         return {{"requested",requested.load()},{"active",active},{"initialized",initialized},{"error",error},{"frames",frames},{"host_moves",moves},
             {"hud_frames",renderer.hudFrames},{"section_meshes",renderer.meshMessages},{"avatar_frames",renderer.avatarFrames},{"shader",renderer.shaderName},
-            {"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
+            {"recoveries",recoveryCount},{"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
             {"render_error",renderError},{"character_hide_error",hideError},{"guest_ready",guestReady},
             {"hidden_renderer_count",hiddenRendererCount},
             {"visual_model_hidden",nativeRenderHelper!=nullptr},
