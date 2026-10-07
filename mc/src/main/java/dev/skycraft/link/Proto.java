@@ -191,6 +191,7 @@ public final class Proto {
 	public static final int MC_FLYING = 1 << 7;
 	public static final int MC_FALL_FLYING = 1 << 8;
     public static final int MC_RECOVER = 1 << 9;
+    public static final int MC_INVULNERABLE = 1 << 10;
 
 	// Overlay
 	public static final long OC_STATE = 0x00;

@@ -4,6 +4,7 @@
 #include "player_input_mask.h"
 #include "camera_math.h"
 #include "native_combat.h"
+#include "host_authority.h"
 #include "nlohmann/json.hpp"
 #include <atomic>
 #include <mutex>
@@ -18,6 +19,10 @@ class GameplayBridge {
     PlayerInputMask inputMask;
     BridgeMemory memory;
     NativeCombat combat;
+    HostAuthority<unity::V3> hostAuthority;
+    std::atomic<bool> hostTeleporting=false;
+    std::atomic<std::uint64_t> hostTeleportSettleUntil=0;
+    std::uint64_t hostTeleports=0;
     std::mutex mutex;
     std::atomic<bool> requested=false;
     bool initialized=false,active=false;
@@ -258,6 +263,8 @@ public:
         initialHost=host;teleportPosition=guest;suppliedAnchor=true;
     }
     void recover() {requested.store(true);recovery.store(true);}
+    void hostTeleportBegin() {hostTeleporting.store(true);}
+    void hostTeleportFinish() {hostTeleportSettleUntil.store(GetTickCount64()+750);hostTeleporting.store(false);recovery.store(true);}
     void enable(bool value) {if(value&&!requested.exchange(true)) rejoin.store(true);else if(!value) requested.store(false);}
     void capture() {std::lock_guard lock(mutex);captured=false;captureError.clear();}
     void shader(const std::string& name) {std::lock_guard lock(mutex);queuedShader=name;}
@@ -299,7 +306,7 @@ public:
                     unity::Api::TemporaryRoot root(api.raw(),encoded);
                     auto length=reinterpret_cast<std::uintptr_t(*)(void*)>(GetProcAddress(GetModuleHandleW(L"GameAssembly.dll"),"il2cpp_array_length"));
                     const auto n=length?length(encoded):0;if(!n||n>64ull*1024*1024) throw std::runtime_error("capture encoding invalid");
-                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay21-frame.png",std::ios::binary);
+                    std::ofstream output("D:\\MC x ENDFIELD\\reports\\gameplay24-frame.png",std::ios::binary);
                     output.write(reinterpret_cast<const char*>(encoded)+32,std::streamsize(n));if(!output) throw std::runtime_error("capture write failed");
                     api.destroy(image);
                 } catch(const std::exception& e) {captureError=e.what();}
@@ -408,11 +415,11 @@ public:
         if(!memory.data) return;
         try {
             const bool consume=renderer.ready;
-            std::vector<unsigned char> newestAvatar;
+            std::vector<unsigned char> newestAvatar,newestScene;
             unsigned type;unsigned processed=0;std::size_t budget=kRenderByteBudget;
             while(processed<kMaxRenderMessages&&memory.render(type,payload)) {
                 if(consume) {
-                    try {if(type==proto::kRenAvatar) newestAvatar=payload;else renderer.message(type,payload,at);}
+                    try {if(type==proto::kRenAvatar) newestAvatar=payload;else if(type==proto::kRenScene) newestScene=payload;else renderer.message(type,payload,at);}
                     catch(const std::exception& e) {renderError=e.what();++droppedMessages;}
                 } else ++droppedMessages;
                 ++processed;
@@ -421,6 +428,7 @@ public:
                 budget-=used;
             }
             if(consume&&!newestAvatar.empty()) renderer.message(proto::kRenAvatar,newestAvatar,at);
+            if(consume&&!newestScene.empty()) renderer.message(proto::kRenScene,newestScene,at);
         } catch(const std::exception& e) {renderError=e.what();}
     }
     struct RingDrain {
@@ -435,7 +443,8 @@ public:
             inputMask.bind(host);
             if(!memory.open()) return;
             RingDrain guard{this,mcOrigin};
-            if(!requested.load()||!valid||!living||cinematic||!character||!movement) {
+            if(!requested.load()||!valid||!living||cinematic||hostTeleporting.load()||GetTickCount64()<hostTeleportSettleUntil.load()||!character||!movement) {
+                hostAuthority.suspend();
                 rawX.exchange(0);rawY.exchange(0);lookInitialized=false;
                 inputMask.release();
                 if(active) {input(false);cursor(false);renderer.visible(false);setCharacterVisible(true);combat.stop(memory);active=false;}
@@ -466,6 +475,7 @@ public:
                 input(false);renderer.visible(false);
                 safeHost=where;teleportPosition=toMc(where);terrainIndex=4;terrainCenterX=terrainCenterZ=INT_MIN;characterId=reinterpret_cast<std::uintptr_t>(character);
                 characterObject=character;holdStarted=0;
+                hostAuthority.reset();
                 ++epoch;teleport=epoch;guestReady=false;
                 memory.collision(proto::kColClear,&epoch,sizeof(epoch));
                 error.clear();
@@ -474,19 +484,26 @@ public:
             if(rejoin.exchange(false)) {++teleport;guestReady=false;error.clear();}
             if(!queuedShader.empty()&&renderer.ready) {renderer.configureShader(queuedShader);queuedShader.clear();}
             characterObject=character;
+            proto::McState protectionState{};
+            if(memory.mc(protectionState)) combat.protect(character,(protectionState.flags&proto::kMcInWorld)&&(protectionState.flags&proto::kMcInvulnerable));
             DWORD foreground=0;auto window=GetForegroundWindow();GetWindowThreadProcessId(window,&foreground);
             const bool focus=foreground==GetCurrentProcessId();input(focus);
             auto* camera=api.call(api.method("Camera","get_main","","UnityEngine.Camera"));
             if(!camera) return;
             hostMenu=api.value<int>(api.method("Camera","get_cullingMask","","System.Int32"),camera)==0;
             if(hostMenu) {
+                hostAuthority.suspend();
                 rawX.exchange(0);rawY.exchange(0);lookInitialized=false;
                 inputMask.release();
-                combat.stop(memory);
+                combat.stop(memory,false);
                 input(false);cursor(false);renderer.visible(false);setCharacterVisible(true);
                 guestReady=false;guard.hide=true;
                 proto::SkyState paused{};paused.flags=proto::kSkyLoading|proto::kSkyMenuOpen;paused.worldId=epoch;paused.collisionEpoch=epoch;
                 memory.sky(paused);return;
+            }
+            if(hostAuthority.observe(where)) {
+                ++hostTeleports;recovery.store(true);lookInitialized=false;
+                ++epoch;memory.collision(proto::kColClear,&epoch,sizeof(epoch));
             }
             auto* transform=api.transform(camera,true);
             auto rotation=api.value<unity::Quaternion>(api.method("Transform","get_rotation","","UnityEngine.Quaternion"),transform);
@@ -556,6 +573,7 @@ public:
                     lastRecoveryReason=(mc.flags&proto::kMcDead)?"guest_dead":(measured?"below_measured_floor":"unmeasured_drop");
                     bool warning=false;
                     api.call(api.method("MovementComponent","TeleportTo","UnityEngine.Vector3|System.Boolean","System.Void",gameAssembly,gameSpace),movement,{&safeHost,&warning});
+                    hostAuthority.commanded(safeHost);
                     // Recover both processes together instead of disabling the bridge and
                     // leaving Minecraft frozen below the playable world for the session.
                     recovery.store(true);guestReady=false;
@@ -576,6 +594,7 @@ public:
                     bool showWarning=false;
                     api.call(api.method("MovementComponent","TeleportTo","UnityEngine.Vector3|System.Boolean","System.Void",gameAssembly,gameSpace),movement,{&desired,&showWarning});++moves;
                 }
+                hostAuthority.commanded(desired);
             }
             // Keep scene matrices aligned while the host is in the background as well.
             // Input focus is independent of the camera's world transform.
@@ -606,8 +625,8 @@ public:
     nlohmann::json snapshot() {
         std::lock_guard lock(mutex);
         return {{"requested",requested.load()},{"active",active},{"initialized",initialized},{"error",error},{"frames",frames},{"host_moves",moves},
-            {"hud_frames",renderer.hudFrames},{"section_meshes",renderer.meshMessages},{"avatar_frames",renderer.avatarFrames},{"shader",renderer.shaderName},
-            {"recoveries",recoveryCount},{"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
+            {"hud_frames",renderer.hudFrames},{"section_meshes",renderer.meshMessages},{"avatar_frames",renderer.avatarFrames},{"scene_frames",renderer.sceneFrames},{"scene_vertices",renderer.sceneVertices},{"shader",renderer.shaderName},
+            {"host_teleports",hostTeleports},{"host_teleporting",hostTeleporting.load()},{"recoveries",recoveryCount},{"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
             {"render_error",renderError},{"character_hide_error",hideError},{"guest_ready",guestReady},
             {"hidden_renderer_count",hiddenRendererCount},
             {"visual_model_hidden",nativeRenderHelper!=nullptr},

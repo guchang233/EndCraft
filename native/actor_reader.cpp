@@ -43,6 +43,17 @@ motion_probe::Probe motion;
 #endif
 #ifdef ENDCRAFT_GAMEPLAY
 endcraft::GameplayBridge gameplay;
+using TeleportNotify=void(__fastcall*)(void*,void*);
+TeleportNotify nextTeleportBegin=nullptr,nextTeleportFinish=nullptr;
+BE_ResolvedMethodV1 teleportBegin{},teleportFinish{};
+void __fastcall onTeleportBegin(void* instance,void* info) {
+    if(info==teleportBegin.method_info) gameplay.hostTeleportBegin();
+    if(nextTeleportBegin) nextTeleportBegin(instance,info);
+}
+void __fastcall onTeleportFinish(void* instance,void* info) {
+    if(nextTeleportFinish) nextTeleportFinish(instance,info);
+    if(info==teleportFinish.method_info) gameplay.hostTeleportFinish();
+}
 using RawData=UINT(WINAPI*)(HRAWINPUT,UINT,LPVOID,PUINT,UINT);
 RawData nextRaw=nullptr;
 using RawBuffer=UINT(WINAPI*)(PRAWINPUT,PUINT,UINT);
@@ -313,6 +324,13 @@ BE_Result start() {
         auto rawBuffer=GetProcAddress(GetModuleHandleW(L"user32.dll"),"GetRawInputBuffer");
         auto bufferResult=rawBuffer?host.hooks->create(host.hooks->context,kId,reinterpret_cast<void*>(rawBuffer),reinterpret_cast<void*>(onRawBuffer),reinterpret_cast<void**>(&nextRawBuffer),&handle):BE_Result_NotFound;
         gameplay.rawInputReady(rawResult==BE_Result_Ok||bufferResult==BE_Result_Ok);
+        BE_MethodDescriptorV1 begin{"Gameplay.Beyond.dll","Beyond.Gameplay","TeleportProcessor","_EnterClientPosAuthority",nullptr,"System.Void",0};
+        BE_MethodDescriptorV1 finish{"Gameplay.Beyond.dll","Beyond.Gameplay","TeleportProcessor","_ExitClientPosAuthority",nullptr,"System.Void",0};
+        if(api->resolve_method(api->context,&begin,&teleportBegin)==BE_Result_Ok&&api->resolve_method(api->context,&finish,&teleportFinish)==BE_Result_Ok) {
+            auto first=host.hooks->create(host.hooks->context,kId,teleportBegin.method_pointer,reinterpret_cast<void*>(onTeleportBegin),reinterpret_cast<void**>(&nextTeleportBegin),&handle);
+            auto second=first==BE_Result_Ok?host.hooks->create(host.hooks->context,kId,teleportFinish.method_pointer,reinterpret_cast<void*>(onTeleportFinish),reinterpret_cast<void**>(&nextTeleportFinish),&handle):first;
+            if(first!=BE_Result_Ok||second!=BE_Result_Ok) {host.hooks->disable_module(host.hooks->context,kId);return BE_Result_ContractMismatch;}
+        }
     }
 #endif
     if(result==BE_Result_Ok) enabled.store(true,std::memory_order_release);

@@ -102,6 +102,7 @@ namespace skycraft::proto
 		kMcFlying = 1u << 7,
 		kMcFallFlying = 1u << 8,
         kMcRecover = 1u << 9,
+        kMcInvulnerable = 1u << 10,
 	};
 
 	struct McState

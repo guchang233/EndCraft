@@ -290,7 +290,10 @@ public final class SkyClient {
 			&& SkyCollision.isKnown(bx, by - SkyCollision.REGION_SIZE, bz);
 		// Release only after a measured surface exists under this exact footprint.
 		// Nearby occupied cells do not prove that a gap beneath the player is safe.
-		boolean ready = known && Double.isFinite(SkyCollider.groundAt(holdPos.x, holdPos.y, holdPos.z, 2.5));
+		var supportBox = new net.minecraft.world.phys.AABB(holdPos.x - .29, holdPos.y - .08, holdPos.z - .29,
+			holdPos.x + .29, holdPos.y + .02, holdPos.z + .29);
+		boolean blockSupport = player.level().getBlockCollisions(player, supportBox).iterator().hasNext();
+		boolean ready = known && (blockSupport || Double.isFinite(SkyCollider.groundAt(holdPos.x, holdPos.y, holdPos.z, 2.5)));
 		if (ready && sky.inGame() && !sky.loading()) {
 			// Skyrim's feet can sit a fraction of a voxel inside our ground layer. Minecraft's
 			// collision never pushes you out of a shape, so you'd drop through: lift out first.
@@ -314,7 +317,19 @@ public final class SkyClient {
 	private static Vec3 liftOutOfGeometry(LocalPlayer player, Vec3 pos) {
 		// Stand on the exact Skyrim ground if it is slightly above the feet (up to 2.5 blocks).
 		double ground = SkyCollider.groundAt(pos.x, pos.y, pos.z, 2.5);
-		return !Double.isNaN(ground) && ground > pos.y ? new Vec3(pos.x, ground, pos.z) : pos;
+		Vec3 safe = !Double.isNaN(ground) && ground > pos.y ? new Vec3(pos.x, ground, pos.z) : pos;
+		// Host teleports know nothing about saved MC blocks. Lift out of real MC solids
+		// too, otherwise a destination inside an old wall traps the player indefinitely.
+		for (int i = 0; i < 16; i++) {
+			var box = player.getBoundingBox().move(safe.subtract(player.position())).deflate(1.0E-5);
+			double top = safe.y;
+			for (var shape : player.level().getBlockCollisions(player, box)) {
+				if (!shape.isEmpty()) top = Math.max(top, shape.max(net.minecraft.core.Direction.Axis.Y) + .001);
+			}
+			if (top <= safe.y) break;
+			safe = new Vec3(safe.x, top, safe.z);
+		}
+		return safe;
 	}
 
 	private static void requestTeleport(Minecraft minecraft, double x, double y, double z, float yaw, float pitch) {
@@ -354,6 +369,7 @@ public final class SkyClient {
 			Camera camera = minecraft.gameRenderer.mainCamera();
 			flags |= Proto.MC_IN_WORLD;
             if (recoveryRequested) flags |= Proto.MC_RECOVER;
+            if (player.getAbilities().invulnerable) flags |= Proto.MC_INVULNERABLE;
 			if (player.onGround()) {
 				flags |= Proto.MC_ON_GROUND;
 			}

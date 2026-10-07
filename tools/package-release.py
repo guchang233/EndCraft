@@ -33,19 +33,22 @@ def archive_source(output, version):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output', type=Path, default=ROOT / 'dist/release-1.0.0')
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--module', default='endcraft.gameplay24')
     args = parser.parse_args()
     version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
-    module = 'endcraft.gameplay15'
+    module = args.module
+    if not module.startswith('endcraft.gameplay') or not module.removeprefix('endcraft.gameplay').isdigit():
+        raise SystemExit('A project gameplay module identity is required.')
     dll = ROOT / f'build/native/{module}.dll'
     jar = ROOT / f'mc/build/libs/endcraft-guest-{version}.jar'
     if not dll.is_file() or not jar.is_file():
         raise SystemExit('Build the native module and the versioned Minecraft JAR first.')
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT).strip():
         raise SystemExit('Commit the release sources before creating the corresponding source archive.')
-    output = args.output.resolve()
+    output = (args.output or ROOT / f'dist/release-{version}').resolve()
     output.mkdir(parents=True, exist_ok=True)
-    module_zip = output / f'EndCraft-gameplay15-{version}-win-x64.zip'
+    module_zip = output / f'EndCraft-{module.removeprefix("endcraft.")}-{version}-win-x64.zip'
     manifest = {
         'format': 1, 'abi': 1, 'id': module, 'version': version,
         'name': 'EndCraft prototype ' + version,
@@ -55,7 +58,7 @@ def main():
     with zipfile.ZipFile(module_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(dll, f'native/windows-x64/{module}.dll')
         archive.writestr('module.json', json.dumps(manifest, indent=2))
-        for name in ('LICENSE', 'THIRD-PARTY-NOTICES.md', 'docs/RELEASE-1.0.0.md'):
+        for name in ('LICENSE', 'THIRD-PARTY-NOTICES.md', f'docs/RELEASE-{version}.md'):
             archive.write(ROOT / name, name)
     shutil.copy2(jar, output / jar.name)
     source_zip = output / f'EndCraft-{version}-source.zip'

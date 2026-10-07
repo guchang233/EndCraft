@@ -19,6 +19,8 @@ public final class SkyCraftClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(ProbeTelemetry::tick);
         EntityRendererRegistry.register(SkyCombat.SKYRIM_ACTOR, NoopRenderer::new);
 		dev.skycraft.world.SkyCollision.setSmoothCollider(e ->
+            (dev.skycraft.link.SkyLink.active() && (e instanceof net.minecraft.world.entity.vehicle.boat.AbstractBoat
+                || e instanceof net.minecraft.world.entity.vehicle.minecart.AbstractMinecart)) ||
             (e instanceof net.minecraft.client.player.LocalPlayer && SkyClient.linked()) ||
             (e instanceof net.minecraft.server.level.ServerPlayer sp && dev.skycraft.net.SkyNet.isHost(sp) && dev.skycraft.link.SkyLink.active()));
     }

@@ -12,7 +12,12 @@ public final class SmoothTerrainCollision {
 
     public static Vec3 collide(Entity entity, Vec3 move) {
         AABB box = entity.getBoundingBox();
-        double step = entity.maxUpStep();
+        // Boats report no terrain step height. When a streamed height field arrives
+        // after a boat has settled on a coarse voxel, its hull can be below the
+        // measured surface; recover within one terrain cell on both prediction
+        // and server replay. Vanilla MC block collision still runs separately.
+        double step = entity instanceof net.minecraft.world.entity.vehicle.boat.AbstractBoat
+            ? Math.max(entity.maxUpStep(), 1.0) : entity.maxUpStep();
         List<SkyTri> tris = new ArrayList<>();
         SkyCollision.trianglesNear(box.expandTowards(move).inflate(1.0, 1.0 + step, 1.0), tris);
         if (tris.isEmpty()) return move;

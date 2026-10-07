@@ -23,6 +23,7 @@ class UnityRenderer {
     std::map<unsigned,void*> textures,materials;
     std::map<std::array<int,3>,MeshObject> sections;
     std::vector<MeshObject> avatar;
+    std::vector<MeshObject> scene;
     std::vector<unsigned char> pixels;
     unity::V3 hostOrigin{},mcOrigin{.5f,64,.5f};
     int worldLayer=0,cameraMask=0;
@@ -192,6 +193,7 @@ public:
     bool shaderSupported=false;
     std::uint64_t hudFrames=0,meshMessages=0,avatarFrames=0;
     std::uint64_t avatarVertices=0;
+    std::uint64_t sceneVertices=0,sceneFrames=0;
     std::size_t sectionCount() const {return sections.size();}
     std::size_t textureCount() const {return textures.size();}
     int layer() const {return worldLayer;}
@@ -201,6 +203,8 @@ public:
         for(const auto& [key,section]:sections)
             if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),section.renderer)) ++count;
         for(const auto& mesh:avatar)
+            if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),mesh.renderer)) ++count;
+        for(const auto& mesh:scene)
             if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),mesh.renderer)) ++count;
         return count;
     }
@@ -232,7 +236,7 @@ public:
         api.call(api.method("Graphic","set_raycastTarget","System.Boolean","System.Void","UnityEngine.UI.dll","UnityEngine.UI"),rawImage,{&raycast});
         api.setActive(canvas,false);ready=true;
     }
-    void visible(bool value) {if(canvas) api.setActive(canvas,value&&GetTickCount64()-lastImmediateHud>250);for(auto& [key,s]:sections) api.setActive(s.object,value);if(!value) for(auto& a:avatar) api.setActive(a.object,false);}
+    void visible(bool value) {if(canvas) api.setActive(canvas,value&&GetTickCount64()-lastImmediateHud>250);for(auto& [key,s]:sections) api.setActive(s.object,value);if(!value) {for(auto& a:avatar) api.setActive(a.object,false);for(auto& s:scene) api.setActive(s.object,false);}}
     void collisionEnabled(bool value) {
         for(auto& [key,s]:sections) if(s.collider)
             api.call(api.method("Collider","set_enabled","System.Boolean","System.Void","UnityEngine.PhysicsModule.dll"),s.collider,{&value});
@@ -270,6 +274,7 @@ public:
             };
             for(auto& [key,mesh]:sections) draw(mesh);
             for(auto& mesh:avatar) draw(mesh);
+            for(auto& mesh:scene) draw(mesh);
             api.call(api.method("Graphics","SetRenderTarget","UnityEngine.RenderTexture"),nullptr,{nullptr});
             }
             // HGRP draws world meshes with scene depth before native UI. The
@@ -325,6 +330,7 @@ public:
         };
         for(auto& [key,mesh]:sections) append(mesh);
         for(auto& mesh:avatar) append(mesh);
+        for(auto& mesh:scene) append(mesh);
         return count;
     }
     void overlay(BridgeMemory& memory) {
@@ -365,19 +371,28 @@ public:
             auto [entry,inserted]=sections.try_emplace(key);if(inserted) entry->second=createMesh("Minecraft blocks",true);
             updateMesh(entry->second,reinterpret_cast<const proto::RenVertex*>(payload.data()+sizeof(header)),header.vertexCount,0,{float(header.sx*16),float(header.sy*16),float(header.sz*16)});++meshMessages;return;
         }
-        if(type==proto::kRenAvatar) {
-            auto header=read<proto::RenAvatar>(payload);
-            avatarVertices=header.vertexCount;
-            auto offset=sizeof(header)+std::uint64_t(header.batchCount)*sizeof(proto::RenBatch);
-            if(header.batchCount>64||offset>payload.size()||std::uint64_t(header.vertexCount)*32>payload.size()-offset) throw std::runtime_error("avatar payload invalid");
-            while(avatar.size()<header.batchCount) avatar.push_back(createMesh("Minecraft Steve",false));
-            for(unsigned i=0;i<header.batchCount;++i) {
-                auto batch=read<proto::RenBatch>(payload,sizeof(header)+i*sizeof(proto::RenBatch));
-                if(std::uint64_t(batch.first)+batch.count>header.vertexCount) throw std::runtime_error("avatar batch invalid");
-                updateMesh(avatar[i],reinterpret_cast<const proto::RenVertex*>(payload.data()+offset)+batch.first,batch.count,batch.texture,player,true);
+        if(type==proto::kRenAvatar||type==proto::kRenScene) {
+            const bool isScene=type==proto::kRenScene;
+            proto::RenAvatar header{};std::size_t headerBytes=sizeof(header);unity::V3 at=player;
+            if(isScene) {
+                const auto h=read<proto::RenScene>(payload);header={h.batchCount,h.vertexCount};headerBytes=sizeof(h);
+                if(!std::isfinite(h.originX)||!std::isfinite(h.originY)||!std::isfinite(h.originZ)) throw std::runtime_error("scene origin invalid");
+                at={float(h.originX),float(h.originY),float(h.originZ)};sceneVertices=h.vertexCount;
+            } else {
+                header=read<proto::RenAvatar>(payload);
+                avatarVertices=header.vertexCount;
             }
-            for(std::size_t i=header.batchCount;i<avatar.size();++i) {api.setActive(avatar[i].object,false);avatar[i].drawn=false;}
-            ++avatarFrames;
+            auto& meshes=isScene?scene:avatar;
+            auto offset=headerBytes+std::uint64_t(header.batchCount)*sizeof(proto::RenBatch);
+            if(header.batchCount>64||offset>payload.size()||std::uint64_t(header.vertexCount)*32>payload.size()-offset) throw std::runtime_error("avatar payload invalid");
+            while(meshes.size()<header.batchCount) meshes.push_back(createMesh(isScene?"Minecraft entities":"Minecraft Steve",false));
+            for(unsigned i=0;i<header.batchCount;++i) {
+                auto batch=read<proto::RenBatch>(payload,headerBytes+i*sizeof(proto::RenBatch));
+                if(std::uint64_t(batch.first)+batch.count>header.vertexCount) throw std::runtime_error("avatar batch invalid");
+                updateMesh(meshes[i],reinterpret_cast<const proto::RenVertex*>(payload.data()+offset)+batch.first,batch.count,batch.texture,at,true);
+            }
+            for(std::size_t i=header.batchCount;i<meshes.size();++i) {api.setActive(meshes[i].object,false);meshes[i].drawn=false;}
+            if(isScene) ++sceneFrames;else ++avatarFrames;
         }
     }
 };

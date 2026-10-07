@@ -7,21 +7,38 @@
 #include <cmath>
 
 namespace endcraft {
-// A Minecraft hit requests the active character's ordinary targeted attack.
-// Damage, range, cost, resistance and server synchronization remain game-owned.
+// Minecraft owns hit detection, weapon cooldowns, crits and projectile damage.
+// Forward the resulting amount through the host's ordinary damage modifier pipeline.
 class NativeCombat {
     unity::Api api;
-    struct Actor {void* entity;void* ability;std::uint32_t entityRoot,abilityRoot;};
+    struct Actor {void* entity;void* ability;std::uint32_t entityRoot,abilityRoot;unity::V3 position;double hp,maxHp;};
     std::unordered_map<std::uint32_t,Actor> targets;
     std::uint64_t lastScan=0,requests=0,accepted=0,rejected=0,confirmedHpDrops=0;
     std::uint32_t watched=0;
     double hpBefore=0,serverHpBefore=0,hpAfter=0,serverHpAfter=0;
     std::uint64_t watchUntil=0;
     std::string error,lastResult;
+    double lastMcDamage=0,lastHostDamage=0;
+    std::uint64_t localHpDrops=0;
+    void* protectionBox=nullptr;
+    std::uint32_t protectionRoot=0,protectedPlayer=0;
+    std::string protectionError;
+    double playerHp=0,playerMaxHp=0;
+    static constexpr double virtualEnemyHealth=20.0;
     static constexpr const char* assembly="Gameplay.Beyond.dll";
     static constexpr const char* space="Beyond.Gameplay.Core";
     BE_ResolvedMethodV1 method(const char* type,const char* name,const char* params="",const char* result="System.Void") {
         return api.method(type,name,params,result,assembly,space);
+    }
+    template<class T> T enumValue(const char* type,const char* name,const char* asmName=assembly,const char* ns=space) {
+        auto runtimeModule=GetModuleHandleW(L"GameAssembly.dll");
+        auto field=reinterpret_cast<const void*(*)(const void*,const char*)>(GetProcAddress(runtimeModule,"il2cpp_class_get_field_from_name"));
+        auto read=reinterpret_cast<void(*)(const void*,void*)>(GetProcAddress(runtimeModule,"il2cpp_field_static_get_value"));
+        auto size=reinterpret_cast<int(*)(const void*,unsigned*)>(GetProcAddress(runtimeModule,"il2cpp_class_value_size"));
+        const auto klass=api.klass(type,asmName,ns);unsigned align=0;
+        if(!field||!read||!size||size(klass.class_info,&align)!=sizeof(T)) throw std::runtime_error("combat enum ABI mismatch");
+        auto f=field(klass.class_info,name);if(!f) throw std::runtime_error("combat enum member missing");
+        T output{};read(f,&output);return output;
     }
     void clearTargets() {
         if(api.raw()) for(auto& [id,a]:targets) {
@@ -56,7 +73,7 @@ class NativeCombat {
             double hp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),ability);
             double max=api.value<double>(method("AbilitySystem","get_maxHp","","System.Double"),ability);
             if(!std::isfinite(hp)||!std::isfinite(max)||hp<=0||max<=0) continue;
-            Actor actor{entity,ability,api.raw()->gchandle_new(api.raw()->context,entity,0),api.raw()->gchandle_new(api.raw()->context,ability,0)};
+            Actor actor{entity,ability,api.raw()->gchandle_new(api.raw()->context,entity,0),api.raw()->gchandle_new(api.raw()->context,ability,0),at,hp,max};
             if(!actor.entityRoot||!actor.abilityRoot) throw std::runtime_error("combat actor root failed");
             targets.emplace(id,actor);
             auto mc=coordinates::toMc(origin,mcOrigin,at);
@@ -69,7 +86,34 @@ class NativeCombat {
     }
 public:
     void bind(const BE_HostApiV1* runtime) {api.bind(runtime);}
-    void stop(BridgeMemory& memory) {clearTargets();memory.actors({});proto::McEvent event{};for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {} watched=0;}
+    void releaseProtection() noexcept {
+        if(protectionBox) try {
+            api.call(method("AbilitySystem/AllowedDamageMaskHandle","Revert"),api.raw()->object_unbox(api.raw()->context,protectionBox));
+        } catch(const std::exception& e) {protectionError=e.what();}
+        if(protectionRoot) api.raw()->gchandle_free(api.raw()->context,protectionRoot);
+        protectionBox=nullptr;protectionRoot=0;protectedPlayer=0;
+    }
+    void protect(void* player,bool invulnerable) noexcept {
+        try {
+            auto id=api.value<std::uint32_t>(method("Entity","get_instanceUid","","System.UInt32"),player);
+            if(protectionBox&&(!invulnerable||id!=protectedPlayer)) releaseProtection();
+            auto* ability=api.call(method("Entity","get_abilityCom","","Beyond.Gameplay.Core.AbilitySystem"),player);
+            if(invulnerable&&ability&&!protectionBox) {
+                auto mask=enumValue<std::int64_t>("DamageDecorateMask","None",assembly,"Beyond.Gameplay");
+                auto* boxed=api.call(method("AbilitySystem","RequestAllowedDamageMask","Beyond.Gameplay.DamageDecorateMask","Beyond.Gameplay.Core.AbilitySystem.AllowedDamageMaskHandle"),ability,{&mask});
+                if(!boxed) throw std::runtime_error("creative protection handle missing");
+                auto root=api.raw()->gchandle_new(api.raw()->context,boxed,0);
+                if(!root) {
+                    api.call(method("AbilitySystem/AllowedDamageMaskHandle","Revert"),api.raw()->object_unbox(api.raw()->context,boxed));
+                    throw std::runtime_error("creative protection root failed");
+                }
+                protectionBox=boxed;protectionRoot=root;protectedPlayer=id;
+            }
+            if(ability) {playerHp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),ability);playerMaxHp=api.value<double>(method("AbilitySystem","get_maxHp","","System.Double"),ability);}
+            protectionError.clear();
+        } catch(const std::exception& e) {protectionError=e.what();}
+    }
+    void stop(BridgeMemory& memory,bool restoreProtection=true) {if(restoreProtection) releaseProtection();clearTargets();memory.actors({});proto::McEvent event{};for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {} watched=0;}
     void tick(void* player,unity::V3 position,unity::V3 origin,unity::V3 mcOrigin,BridgeMemory& memory) noexcept {
         try {
             const auto now=GetTickCount64();
@@ -89,21 +133,38 @@ public:
                 if(found==targets.end()||!std::isfinite(event.a)||event.a<=0) {++rejected;lastResult="unknown_or_invalid_target";continue;}
                 auto* source=api.call(method("Entity","get_abilityCom","","Beyond.Gameplay.Core.AbilitySystem"),player);
                 if(!source) {++rejected;lastResult="player_ability_missing";continue;}
-                auto* boxed=api.call(method("AbilitySystem","get_selfTargetHandle","","Beyond.Gameplay.Core.TargetHandleView"),found->second.ability);
-                unity::Api::TemporaryRoot root(api.raw(),boxed);
-                auto* target=api.raw()->object_unbox(api.raw()->context,boxed);
-                if(!target) throw std::runtime_error("combat target handle missing");
                 const auto hp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
                 const auto serverHp=api.value<double>(method("AbilitySystem","get_serverHp","","System.Double"),found->second.ability);
-                bool cast=api.value<bool>(method("AbilitySystem","TryCastNormalAttack","Beyond.Gameplay.Core.TargetHandleView","System.Boolean"),source,{target});
-                if(cast) {++accepted;watched=event.formId;hpBefore=hp;serverHpBefore=serverHp;hpAfter=hp;serverHpAfter=serverHp;watchUntil=now+10000;lastResult="ordinary_attack_accepted_pending_damage";}
-                else {++rejected;lastResult="ordinary_attack_rejected_by_game";}
+                if(hp<=0) {++rejected;lastResult="target_already_dead";continue;}
+                // Proxies have Minecraft's 20-point maximum health. Map the actual MC
+                // hit to the same fraction of the target's native maximum health.
+                double amount=double(std::clamp(event.a,0.f,10000.f))*found->second.maxHp/virtualEnemyHealth;
+                int damageType=enumValue<int>("DamageType",(event.flags&proto::kHitFire)?"Fire":"Physical","Common.Beyond.dll","Beyond.GEnums");
+                std::int64_t mask=enumValue<std::int64_t>("DamageDecorateMask","None",assembly,"Beyond.Gameplay");
+                int visual=enumValue<int>("AbilitySystem/Modifier/DamageVisualImportance","Level0");
+                bool option=(event.flags&proto::kHitCritical)!=0;
+                auto* boxed=api.call(method("AbilitySystem/Modifier","NewDamage",
+                    "Beyond.Gameplay.Core.AbilitySystem|Beyond.Gameplay.Core.AbilitySystem|System.Double|Beyond.GEnums.DamageType|Beyond.Gameplay.DamageDecorateMask|Beyond.Gameplay.Core.AbilitySystem.Modifier.DamageVisualImportance|System.Boolean",
+                    "Beyond.Gameplay.Core.AbilitySystem.Modifier"),nullptr,{source,found->second.ability,&amount,&damageType,&mask,&visual,&option});
+                unity::Api::TemporaryRoot root(api.raw(),boxed);
+                auto* modifier=boxed?api.raw()->object_unbox(api.raw()->context,boxed):nullptr;
+                if(!modifier) throw std::runtime_error("combat damage modifier missing");
+                const int result=api.value<int>(method("AbilitySystem","ApplyModifier","Beyond.Gameplay.Core.AbilitySystem.Modifier&","Beyond.Gameplay.Core.AbilitySystem.Modifier.ApplyResult"),found->second.ability,{modifier});
+                lastMcDamage=event.a;lastHostDamage=amount;
+                hpAfter=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
+                serverHpAfter=api.value<double>(method("AbilitySystem","get_serverHp","","System.Double"),found->second.ability);
+                if(result==enumValue<int>("AbilitySystem/Modifier/ApplyResult","Succeed")) {
+                    ++accepted;watched=event.formId;hpBefore=hp;serverHpBefore=serverHp;watchUntil=now+10000;lastResult="mc_damage_applied_pending_server_confirmation";
+                    if(hpAfter<hp) ++localHpDrops;
+                } else {++rejected;lastResult="damage_modifier_rejected_by_game";}
             }
             error.clear();
         } catch(const std::exception& e) {error=e.what();}
     }
     nlohmann::json snapshot() const {
-        return {{"path","ordinary_targeted_attack"},{"nearby_enemies",targets.size()},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
+        nlohmann::json actors=nlohmann::json::array();
+        for(const auto& [id,a]:targets) actors.push_back({{"id",id},{"position",{a.position.x,a.position.y,a.position.z}},{"hp",a.hp},{"max_hp",a.maxHp}});
+        return {{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_enemies",targets.size()},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
             {"confirmed_hp_drops",confirmedHpDrops},{"watched_target",watched},{"hp_before",hpBefore},{"hp_after",hpAfter},
             {"server_hp_before",serverHpBefore},{"server_hp_after",serverHpAfter},{"last_result",lastResult},{"error",error}};
     }

@@ -1,39 +1,43 @@
 # EndCraft：MC ×《明日方舟：终末地》联动原型
 
-**v1.0.0 是第 15 版原型的历史快照。** 当前开发修复版为 `endcraft.gameplay21`：HUD 按宿主分辨率绘制，已实测鞘翅滑翔与烟花推进，并加入请求宿主普通攻击的适配器；敌人实际扣血尚未验收。发布的 1.0 附件保持原样，当前改动尚未发布新版本。菜单遮罩降至 20%，消除了 HUD 重复绘制。见 [遮罩修复](docs/VALIDATION-gameplay19.md) 和 [飞行验证](docs/VALIDATION-gameplay18.md) 和 [1.0 说明](docs/RELEASE-1.0.0.md)。
+当前版本 **2.0.0**，宿主模块 `endcraft.gameplay24`。真实终末地中显示 MC 角色、装备、方块、物品栏及实体；MC 负责移动、飞行、物品和攻击，宿主继续运行原场景、敌人及任务。MC 网格进入 HGRP 场景绘制，使用场景深度，在原版 UI 之前绘制。
 
-当前实际模块为 `endcraft.gameplay21`。真实游戏已显示史蒂夫、装备、MC 方块和物品栏。MC 网格进入原生 HGRP 场景绘制，使用场景深度并在原版 UI 之前绘制。相机支持 ±90° 俯仰；MC 客户端和内置服务器统一地形碰撞。
+2.0 修复原生传送与第三人称史蒂夫消失，支持剑、弓和 TNT 的 MC 伤害转交，以及创造模式宿主免伤。用户实机确认传送正常、史蒂夫可见、创造模式受击不掉血、TNT 击杀增加原生任务计数；诊断截图确认任务进度 11/26。实体渲染加入船、掉落物和箭。验收与限制见 [2.0 验证](docs/VALIDATION-gameplay24.md)、[2.0 说明](docs/RELEASE-2.0.0.md)。
 
-完整用户目标尚未完成：复杂地形、NPC 碰撞/寻路、战斗、飞行、完整输入隔离与跨场景恢复仍需完善或验收。本次实机证据及限制见 [验证记录](docs/VALIDATION-gameplay18.md)。
+HUD 按宿主分辨率绘制，本机为 1920×1080；菜单遮罩为 20%，避免重复 HUD 混合。鞘翅和烟花推进已通过正常 MC 机制实测。复杂地形、多层碰撞、NPC 寻路、全新地图的建筑持久锚定、完整输入隔离和全设备兼容尚未完成。1.0 标签及附件保留为第 15 版历史快照，见 [1.0 说明](docs/RELEASE-1.0.0.md)。
 
-MC 端来自 SkyCraft，使用独立的 `mc/run`；共享内存 `Local\EndCraft_v1`，协议版本 12。目标是在实际终末地中运行 MC 玩法，图形直接进入宿主场景。HGRP 材质不可用时退回独立深度合成；该退回方式不提供宿主建筑遮挡。
+MC 端来自 SkyCraft，独立运行于 `mc/run`，通过共享内存 `Local\EndCraft_v1` 与宿主交换协议版本 12 的数据。模型直接进入宿主场景；HGRP 不可用时退回独立深度合成，该退回方式不提供宿主建筑遮挡。
 
 ## 当前安装与使用
 
-本机已注册并启用 `endcraft.gameplay21`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC；本次没有为验收该启动配置重启游戏。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
+本机已注册并启用 `endcraft.gameplay24`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC；本次没有为验收该启动配置重启游戏。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
 
 桥接俯仰范围为 -90° 至 +90°，第三人称加入正常宿主射线避障。极端仰视时相机会靠近角色，按 F5 使用第一人称可获得清晰视野。
 
 按 `/` 打开 MC 指令输入（也支持 T），输入 `/gamemode creative`、`/gamemode survival`、`/gamemode adventure` 或 `/gamemode spectator` 后回车。权限仅授予项目自身的集成镜像世界，不更改其他 MC 实例或远程服务器。ASCII 指令输入已接入；中文输入法组合尚未接入。
 
-死亡后保持死亡前的视角。只剩 HUD 时先按 F5 切回第三人称；仍异常时关闭终末地原生菜单，再按 **Ctrl+Alt+R** 重新同步角色位置，或输入 **`/endcraft recover`**（同时切回第三人称）。MC 死亡和持续等待超过 5 秒会尝试自动同步。若终末地原角色死亡，需要先通过原游戏复活或换到存活角色。使用及验证见 [指令与恢复记录](docs/VALIDATION-gameplay21.md)。
+死亡后保持死亡前的视角。只剩 HUD 时先按 F5 切回第三人称；仍异常时关闭终末地原生菜单，再按 **Ctrl+Alt+R** 重新同步角色位置，或输入 **`/endcraft recover`**（同时切回第三人称）。MC 死亡和持续等待超过 5 秒会尝试自动同步。若终末地原角色死亡，需要先通过原游戏复活或换到存活角色。使用及验证见 [指令与恢复记录](docs/VALIDATION-gameplay21.md) 与 [2.0 验证](docs/VALIDATION-gameplay24.md)。
+
+MC 最终攻击伤害按敌人最大生命映射：正常 MC 伤害 7 点对应目标最大生命的 35%，保留 MC 攻击冷却、暴击、附魔、箭和爆炸判定。TNT 对范围内代理产生的实际伤害转入宿主 Damage Modifier 流程。创造/旁观模式的 MC invulnerable 同步为宿主独立伤害屏蔽句柄；切回生存、关闭桥接或角色更换时撤销自己的句柄。创造模式不会补满之前损失的宿主血量。
+
+船通过 MC 物品右键放置，右键交互乘坐、Shift 下船；需要足够空间。实体网格使用同一场景深度。宿主水域尚未映射为 MC 流体，完整水上浮力不作为本版验收结论。
 
 当前按键：WASD 移动、空格跳跃、1–9 选择快捷栏、右键使用/放置、左键破坏、E 打开 MC 库存、F5 切换视角。鞘翅在加入镜像世界时修复并设为不损耗。穿戴在胸甲栏，空中再次按空格展开，手持烟花右键推进；本次受控测试使用正常 MC 展翼与物品使用方法，确认宿主跟随飞行。玩家双击空格输入与复杂地形连续起降仍需复验。桥接取得全局 PlayerController 的独立动作屏蔽令牌，关闭时移除自己的令牌；菜单快捷键和完整输入隔离仍需验证。
 
 ```powershell
-python tools/runtime-report.py status --module endcraft.gameplay21 --output reports/gameplay21-status.json
+python tools/runtime-report.py status --module endcraft.gameplay24 --output reports/gameplay24-status.json
 ```
 
 诊断含实际 MC 坐标、相机模式、上传的模型顶点数、相机层掩码、可见网格数和渲染错误。`active` 或网格上传计数增加不能单独证明视觉效果正确。
 
 ## 构建
 
-当前第 21 版修复保存在本机工作目录，尚未推送。以下命令取得 GitHub 上已发布的 1.0 历史快照及固定版本依赖：
+以下命令取得 2.0 源码及固定版本依赖：
 
 ```powershell
 git clone --recurse-submodules https://github.com/guchang233/EndCraft.git
 cd EndCraft
-git checkout v1.0.0
+git checkout v2.0.0
 git submodule update --init --recursive
 ```
 
@@ -47,7 +51,7 @@ git submodule update --init --recursive
 python tools/package.py
 # 游戏正在运行时，打包至独立暂存目录，保留已加载的包：
 python tools/package.py --staging-only
-# 在 v1.0.0 标签的干净检出中构建历史 1.0 发行附件；该脚本固定打包 gameplay15：
+# 在对应标签的干净检出中打包 2.0 附件：
 python tools/package-release.py
 ```
 
@@ -86,6 +90,9 @@ python tools/diagnose.py
 python tools/register-inspector.py inspect
 python tools/register-inspector.py actor
 python tools/register-inspector.py telemetry
+# 首次安装后注册当前玩法模块（每个身份仅一次）：
+python tools/register-inspector.py gameplay24
+python tools/configure-gameplay-startup.py --auto-start --module gameplay24
 python tools/runtime-report.py observe --module endcraft.telemetry --output reports/telemetry-start.json
 python tools/runtime-report.py status --module endcraft.telemetry --output reports/telemetry-status.json
 ```

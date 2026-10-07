@@ -294,7 +294,7 @@ final class AvatarExporter implements SubmitNodeCollector {
 		PoseStack pose = new PoseStack();
 		int entities = 0;
 		for (Entity e : level.entitiesForRendering()) {
-			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
+			if (e == player || e instanceof SkyrimActorEntity
 				|| e.distanceToSqr(cam) > SCENE_RANGE * SCENE_RANGE || entities >= SCENE_MAX_ENTITIES) {
 				continue;
 			}

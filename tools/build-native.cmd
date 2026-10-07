@@ -47,13 +47,17 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay2.dll
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay21\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay21.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay24\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay24.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
-inspector-test.exe endcraft.gameplay21.dll
+inspector-test.exe endcraft.gameplay24.dll
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_VISUAL_PROBE /DENDCRAFT_TARGETS_PROBE /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.targets\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.targets.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\host_authority_test.cpp /Fe:host-authority-test.exe
+if errorlevel 1 exit /b 1
+host-authority-test.exe
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\coordinate_map_test.cpp /Fe:coordinate-map-test.exe
 if errorlevel 1 exit /b 1

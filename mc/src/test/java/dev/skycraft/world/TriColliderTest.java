@@ -56,6 +56,20 @@ class TriColliderTest {
 	}
 
 	@Test
+	void wideBoatRecoversWhenStreamedGroundReplacesCoarseSupport() {
+		List<SkyTri> t = new ArrayList<>();
+		flat(t, -8, -8, 8, 8, .82093048);
+		double[] prediction = TriCollider.resolve(t, 0, 0, 0, .6875, .5625, 1, true, .06, -.04, 0);
+		assertEquals(.82093048, prediction[1], 1e-6);
+		// The integrated server replays the client's already-resolved movement.
+		double[] replay = TriCollider.resolve(t, 0, 0, 0, .6875, .5625, 1, true,
+			prediction[0], prediction[1], prediction[2]);
+		assertEquals(prediction[0], replay[0], 1e-9);
+		assertEquals(prediction[1], replay[1], 1e-9);
+		assertEquals(prediction[2], replay[2], 1e-9);
+	}
+
+	@Test
 	void unobstructedMovementIsReturnedBitForBit() {
 		List<SkyTri> t = new ArrayList<>();
 		flat(t, -50, -50, 50, 50, 0);
