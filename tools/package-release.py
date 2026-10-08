@@ -42,8 +42,9 @@ def main():
         raise SystemExit('A project gameplay module identity is required.')
     dll = ROOT / f'build/native/{module}.dll'
     jar = ROOT / f'mc/build/libs/endcraft-guest-{version}.jar'
-    if not dll.is_file() or not jar.is_file():
-        raise SystemExit('Build the native module and the versioned Minecraft JAR first.')
+    neo_jar = ROOT / f'mc-neoforge/build/libs/endcraft-neoforge-guest-{version}.jar'
+    if not dll.is_file() or not jar.is_file() or not neo_jar.is_file():
+        raise SystemExit('Build the native module and both versioned Minecraft JARs (Fabric and NeoForge) first.')
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT).strip():
         raise SystemExit('Commit the release sources before creating the corresponding source archive.')
     output = (args.output or ROOT / f'dist/release-{version}').resolve()
@@ -63,9 +64,10 @@ def main():
         for path in sorted((ROOT / 'docs').glob('*.md')):
             archive.write(path, path.relative_to(ROOT).as_posix())
     shutil.copy2(jar, output / jar.name)
+    shutil.copy2(neo_jar, output / neo_jar.name)
     source_zip = output / f'EndCraft-{version}-source.zip'
     archive_source(source_zip, version)
-    files = [module_zip, output / jar.name, source_zip]
+    files = [module_zip, output / jar.name, output / neo_jar.name, source_zip]
     checksum = output / 'SHA256SUMS.txt'
     checksum.write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n'
                                for path in files), encoding='utf-8')

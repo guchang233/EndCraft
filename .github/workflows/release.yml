@@ -1,0 +1,74 @@
+# Builds and tests everything on a clean Windows runner, then publishes the
+# release for a pushed v* tag. Third-party mod JARs are fetched from their
+# publishers and hash-verified; they are not attached to the release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match VERSION $version" }
+
+      - name: Build and test native modules
+        shell: cmd
+        run: tools\build-native.cmd
+
+      - name: Build and test Fabric guest
+        shell: cmd
+        working-directory: mc
+        run: gradlew.bat build --console=plain --no-configuration-cache
+
+      - name: Fetch pinned NeoForge mods
+        run: python tools/fetch-neoforge-mods.py
+
+      - name: Build and test NeoForge guest
+        shell: cmd
+        working-directory: mc-neoforge
+        run: gradlew.bat build --console=plain
+
+      - name: Package release
+        run: python tools/package-release.py
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: EndCraft-release
+          path: dist/
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $files = Get-ChildItem "dist/release-$version" -File | ForEach-Object FullName
+          gh release create '${{ github.ref_name }}' @files --title "EndCraft $version" --notes-file "docs/RELEASE-$version.md"
