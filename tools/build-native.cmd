@@ -47,9 +47,9 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay2.dll
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay31\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay31.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay33\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay33.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
-inspector-test.exe endcraft.gameplay31.dll
+inspector-test.exe endcraft.gameplay33.dll
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
@@ -66,4 +66,8 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\bridge_memory_test.cpp /Fe:bridge-memory-test.exe
 if errorlevel 1 exit /b 1
 bridge-memory-test.exe
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\mesh_layers_test.cpp /Fe:mesh-layers-test.exe
+if errorlevel 1 exit /b 1
+mesh-layers-test.exe
 exit /b %errorlevel%

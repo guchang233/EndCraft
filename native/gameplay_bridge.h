@@ -673,6 +673,7 @@ public:
             {"host_input_mask",inputMask.snapshot()},
             {"mc_exclusive_hotkeys",inputMode.exclusive()},{"native_hotkeys_suppressed",exclusiveGate.load()},
             {"native_keyboard_hooks",nativeKeyHooks},{"suppressed_native_key_queries",suppressedNativeKeys.load()},
+            {"transparency",renderer.transparencyState()},
             {"suppressed_native_binding_updates",suppressedNativeBindings.load()},
             {"scroll_error",scrollError},
             {"pipeline_frames",pipelineFrames},{"pipeline_draw_commands",pipelineDraws},{"pipeline_error",pipelineError},

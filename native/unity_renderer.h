@@ -3,6 +3,7 @@
 #include "bridge_memory.h"
 #include "coordinate_map.h"
 #include "alpha_mesh.h"
+#include "mesh_layers.h"
 #include "nlohmann/json.hpp"
 #include <map>
 #include <array>
@@ -20,8 +21,12 @@ class UnityRenderer {
     std::map<unsigned,alpha::Texture> alphaTextures;
     unsigned hudWidth=0,hudHeight=0,front=0;
     std::uint64_t lastImmediateHud=0;
-    std::map<unsigned,void*> textures,materials;
+    std::map<unsigned,void*> textures;
+    std::map<std::array<unsigned,3>,void*> materials;
     std::map<std::array<int,3>,MeshObject> sections;
+    std::map<std::array<int,3>,std::map<layers::Key,MeshObject>> blendedSections;
+    bool atlasDirty=false;
+    std::uint64_t atlasRegions=0,atlasUploads=0;
     std::vector<MeshObject> avatar;
     std::vector<MeshObject> scene;
     std::vector<unsigned char> pixels;
@@ -32,9 +37,19 @@ class UnityRenderer {
         if(offset>payload.size()||sizeof(T)>payload.size()-offset) throw std::runtime_error("truncated mesh payload");
         T value;std::memcpy(&value,payload.data()+offset,sizeof(value));return value;
     }
-    void* material(unsigned texture) {
+    void materialState(void* result,bool blended,unsigned tint) {
+        for(auto [name,value]:{std::pair{"_SurfaceType",blended?1.f:0.f},{"_SrcBlend",blended?5.f:1.f},{"_DstBlend",blended?10.f:0.f},{"_ZWrite",blended?0.f:1.f},{"_CullMode",2.f}})
+            if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),result,{api.string(name)}))
+                api.call(api.method("Material","SetFloat","System.String|System.Single"),result,{api.string(name),&value});
+        int queue=blended?3000:2000;api.call(api.method("Material","set_renderQueue","System.Int32"),result,{&queue});
+        unity::Color color{float(tint&255)/255,float((tint>>8)&255)/255,float((tint>>16)&255)/255,float(tint>>24)/255};
+        for(const char* name:{"_BaseColor","_Color"}) if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),result,{api.string(name)}))
+            api.call(api.method("Material","SetColor","System.String|UnityEngine.Color"),result,{api.string(name),&color});
+    }
+    void* material(unsigned texture,bool blended=false,unsigned tint=0xffffffffu) {
         auto found=textures.find(texture);if(found==textures.end()) return nullptr;
-        if(auto cached=materials.find(texture);cached!=materials.end()) return cached->second;
+        std::array<unsigned,3> key{texture,blended?1u:0u,tint};
+        if(auto cached=materials.find(key);cached!=materials.end()) return cached->second;
         if(!shader) {
             for(const char* candidate:{"Unlit/Texture","Sprites/Default","UI/Default"}) {
                 shader=api.call(api.method("Shader","Find","System.String","UnityEngine.Shader"),nullptr,{api.string(candidate)});
@@ -43,13 +58,12 @@ class UnityRenderer {
             if(!shader) throw std::runtime_error("no usable built-in world shader");
         }
         auto* chosen=shader;
-        if(nativeRendering) chosen=api.call(api.method("Shader","Find","System.String","UnityEngine.Shader"),nullptr,{api.string("Unlit/Texture")});
         auto* result=api.object("Material");api.call(api.method("Material",".ctor","UnityEngine.Shader"),result,{chosen});
         bindTexture(result,found->second);
         if(shaderName=="Unlit/Transparent Cutout") {
             float cutoff=.1f;api.call(api.method("Material","SetFloat","System.String|System.Single"),result,{api.string("_Cutoff"),&cutoff});
         }
-        materials[texture]=result;return result;
+        materialState(result,blended,tint);materials[key]=result;return result;
     }
     void bindTexture(void* mat,void* texture) {
         api.call(api.method("Material","set_mainTexture","UnityEngine.Texture"),mat,{texture});
@@ -70,14 +84,14 @@ class UnityRenderer {
         if(collide) result.collider=api.add(result.object,"MeshCollider","UnityEngine.PhysicsModule.dll");
         return result;
     }
-    void updateMesh(MeshObject& object,const proto::RenVertex* vertices,std::size_t count,unsigned texture,unity::V3 origin,bool clipAlpha=false) {
+    void updateMesh(MeshObject& object,const proto::RenVertex* vertices,std::size_t count,unsigned texture,unity::V3 origin,bool clipAlpha=false,bool blended=false,unsigned tint=0xffffffffu) {
         if(count>200000||count%3) throw std::runtime_error("mesh vertex count invalid");
-        auto* mat=material(texture);if(!mat) {api.setActive(object.object,false);return;}
+        auto* mat=material(texture,blended,tint);if(!mat) {api.setActive(object.object,false);return;}
         api.call(api.method("MeshFilter","set_sharedMesh","UnityEngine.Mesh"),object.filter,{nullptr});
         std::vector<proto::RenVertex> clipped;
         if(auto tex=alphaTextures.find(texture);tex!=alphaTextures.end()) {
             for(std::size_t i=0;i<count;i+=3) {
-                if(clipAlpha||(vertices[i].flags&1)) alpha::triangle(tex->second,vertices+i,clipped);
+                if(!blended&&(clipAlpha||(vertices[i].flags&1))) alpha::triangle(tex->second,vertices+i,clipped);
                 else clipped.insert(clipped.end(),vertices+i,vertices+i+3);
             }
             if(clipped.size()>200000) throw std::runtime_error("alpha-clipped mesh exceeds vertex budget");
@@ -87,7 +101,7 @@ class UnityRenderer {
         for(std::size_t i=0;i<count;++i) {
             const auto& v=vertices[i];
             if(!std::isfinite(v.x)||!std::isfinite(v.y)||!std::isfinite(v.z)) throw std::runtime_error("nonfinite mesh vertex");
-            positions[i]=coordinates::reflect(unity::V3{v.x,v.y,v.z});uv[i]={v.u,v.v};colors[i]=v.color;
+            positions[i]=coordinates::reflect(unity::V3{v.x,v.y,v.z});uv[i]={v.u,v.v};colors[i]=blended?0xffffffffu:v.color;
             // MC and Unity use opposite triangle winding conventions.
             indices[i]=int(i/3*3+(i%3==1?2:i%3==2?1:0));
         }
@@ -108,7 +122,6 @@ class UnityRenderer {
         bool discard=false;api.call(api.method("Mesh","UploadMeshData","System.Boolean"),object.mesh,{&discard});
         api.call(api.method("MeshFilter","set_sharedMesh","UnityEngine.Mesh"),object.filter,{object.mesh});
         api.call(api.method("Renderer","set_sharedMaterial","UnityEngine.Material"),object.renderer,{mat});
-        if(nativeRendering) {api.call(api.method("Material","set_shader","UnityEngine.Shader"),mat,{shader});if(auto tex=textures.find(texture);tex!=textures.end()) bindTexture(mat,tex->second);}
         object.material=mat;object.drawn=count>0;
         api.setPosition(api.transform(object.object),coordinates::toHost(hostOrigin,mcOrigin,origin));
         if(object.collider) {
@@ -124,7 +137,8 @@ class UnityRenderer {
         auto* texture=api.texture(w,h,bytes);
         if(auto old=textures.find(id);old!=textures.end()) api.destroy(old->second);
         textures[id]=texture;
-        if(auto mat=materials.find(id);mat!=materials.end()) bindTexture(mat->second,texture);
+        for(auto& [key,mat]:materials) if(key[0]==id) {bindTexture(mat,texture);materialState(mat,key[1]!=0,key[2]);}
+        if(id==0) atlasDirty=false;
     }
 public:
     void prepareNative() {
@@ -160,6 +174,34 @@ public:
         for(std::uintptr_t i=0;i<count;++i) probeResult["cameras"].push_back({{"name",name(objects[i])},
             {"id",api.value<int>(api.method("Object","GetInstanceID","","System.Int32"),objects[i])},
             {"mask",api.value<int>(api.method("Camera","get_cullingMask","","System.Int32"),objects[i])}});
+        all=api.call(api.method("Resources","FindObjectsOfTypeAll","System.Type","UnityEngine.Object[]"),nullptr,{api.klass("Material").type_object});
+        unity::Api::TemporaryRoot materialsRoot(api.raw(),all);count=length(all);
+        if(count>100000) throw std::runtime_error("material inventory limit");
+        objects=reinterpret_cast<void**>(static_cast<unsigned char*>(all)+32);probeResult["transparent_materials"]=nlohmann::json::array();
+        unsigned unlitCount=0,transparentCount=0;
+        for(std::uintptr_t i=0;i<count;++i) {
+            auto* mat=objects[i];auto* source=api.call(api.method("Material","get_shader","","UnityEngine.Shader"),mat);
+            if(!source) continue;
+            auto shaderId=name(source);
+            if(shaderId=="HGRP/Unlit") {if(unlitCount++>=16) continue;}
+            else if(shaderId=="HGRP/LitTransparent") {if(transparentCount++>=16) continue;}
+            else continue;
+            nlohmann::json item{{"name",name(mat)},{"shader",shaderId},{"queue",api.value<int>(api.method("Material","get_renderQueue","","System.Int32"),mat)}};
+            item["properties"]=nlohmann::json::object();
+            for(const char* property:{"_Surface","_SurfaceType","_Blend","_BlendMode","_SrcBlend","_DstBlend","_ZWrite","_ZTest","_Cull","_CullMode","_AlphaClip","_AlphaCutoff","_Cutoff","_Opacity","_UseVertexColor"})
+                if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),mat,{api.string(property)}))
+                    item["properties"][property]=api.value<float>(api.method("Material","GetFloat","System.String","System.Single"),mat,{api.string(property)});
+            auto* keywords=api.call(api.method("Material","get_shaderKeywords","","System.String[]"),mat);item["keywords"]=nlohmann::json::array();
+            if(keywords&&length(keywords)<128) {
+                unity::Api::TemporaryRoot keywordRoot(api.raw(),keywords);auto** data=reinterpret_cast<void**>(static_cast<unsigned char*>(keywords)+32);
+                for(std::uintptr_t k=0;k<length(keywords);++k) {
+                    auto* s=data[k];int n=strLength(s);if(n<=0||n>256) continue;
+                    int bytes=WideCharToMultiByte(CP_UTF8,0,chars(s),n,nullptr,0,nullptr,nullptr);std::string key(bytes,'\0');
+                    WideCharToMultiByte(CP_UTF8,0,chars(s),n,key.data(),bytes,nullptr,nullptr);item["keywords"].push_back(key);
+                }
+            }
+            probeResult["transparent_materials"].push_back(std::move(item));
+        }
     }
     bool independentDepth() const {return worldTarget!=nullptr;}
     void configureShader(const std::string& name) {
@@ -185,9 +227,10 @@ public:
         if(!selected) throw std::runtime_error("requested shader unavailable");
         shader=selected;shaderName=name;
         shaderSupported=api.value<bool>(api.method("Shader","get_isSupported","","System.Boolean"),shader);
-        for(auto& [id,mat]:materials) {
+        for(auto& [key,mat]:materials) {
             api.call(api.method("Material","set_shader","UnityEngine.Shader"),mat,{shader});
-            if(auto tex=textures.find(id);tex!=textures.end()) bindTexture(mat,tex->second);
+            if(auto tex=textures.find(key[0]);tex!=textures.end()) bindTexture(mat,tex->second);
+            materialState(mat,key[1]!=0,key[2]);
         }
     }
     bool shaderSupported=false;
@@ -196,12 +239,18 @@ public:
     std::uint64_t sceneVertices=0,sceneFrames=0;
     std::size_t sectionCount() const {return sections.size();}
     std::size_t textureCount() const {return textures.size();}
+    nlohmann::json transparencyState() const {
+        std::size_t meshes=0;for(const auto& [key,group]:blendedSections) meshes+=group.size();
+        return {{"layer_meshes",meshes},{"materials",materials.size()},{"atlas_regions",atlasRegions},{"atlas_uploads",atlasUploads}};
+    }
     int layer() const {return worldLayer;}
     int mask() const {return cameraMask;}
     std::size_t visibleMeshes() {
         std::size_t count=0;
         for(const auto& [key,section]:sections)
             if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),section.renderer)) ++count;
+        for(const auto& [key,group]:blendedSections) for(const auto& [layer,mesh]:group)
+            if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),mesh.renderer)) ++count;
         for(const auto& mesh:avatar)
             if(api.value<bool>(api.method("Renderer","get_isVisible","","System.Boolean"),mesh.renderer)) ++count;
         for(const auto& mesh:scene)
@@ -236,12 +285,24 @@ public:
         api.call(api.method("Graphic","set_raycastTarget","System.Boolean","System.Void","UnityEngine.UI.dll","UnityEngine.UI"),rawImage,{&raycast});
         api.setActive(canvas,false);ready=true;
     }
-    void visible(bool value) {if(canvas) api.setActive(canvas,value&&GetTickCount64()-lastImmediateHud>250);for(auto& [key,s]:sections) api.setActive(s.object,value);if(!value) {for(auto& a:avatar) api.setActive(a.object,false);for(auto& s:scene) api.setActive(s.object,false);}}
+    void visible(bool value) {
+        if(canvas) api.setActive(canvas,value&&GetTickCount64()-lastImmediateHud>250);
+        for(auto& [key,s]:sections) api.setActive(s.object,value&&s.drawn);
+        for(auto& [key,group]:blendedSections) for(auto& [layer,s]:group) api.setActive(s.object,value&&s.drawn);
+        if(!value) {for(auto& a:avatar) api.setActive(a.object,false);for(auto& s:scene) api.setActive(s.object,false);}
+    }
     void collisionEnabled(bool value) {
         for(auto& [key,s]:sections) if(s.collider)
             api.call(api.method("Collider","set_enabled","System.Boolean","System.Void","UnityEngine.PhysicsModule.dll"),s.collider,{&value});
+        for(auto& [key,group]:blendedSections) for(auto& [layer,s]:group) if(s.collider)
+            api.call(api.method("Collider","set_enabled","System.Boolean","System.Void","UnityEngine.PhysicsModule.dll"),s.collider,{&value});
     }
     std::size_t drawImmediate(void* camera) {
+        if(atlasDirty) {
+            bool update=false,discard=false;
+            api.call(api.method("Texture2D","Apply","System.Boolean|System.Boolean"),textures.at(0),{&update,&discard});
+            atlasDirty=false;++atlasUploads;
+        }
         auto view=api.value<unity::Matrix>(api.method("Camera","get_worldToCameraMatrix","","UnityEngine.Matrix4x4"),camera);
         auto projection=api.value<unity::Matrix>(api.method("Camera","get_projectionMatrix","","UnityEngine.Matrix4x4"),camera);
         auto* old=api.call(api.method("RenderTexture","get_active","","UnityEngine.RenderTexture"));
@@ -275,6 +336,7 @@ public:
             for(auto& [key,mesh]:sections) draw(mesh);
             for(auto& mesh:avatar) draw(mesh);
             for(auto& mesh:scene) draw(mesh);
+            for(auto& [key,group]:blendedSections) for(auto& [layer,mesh]:group) draw(mesh);
             api.call(api.method("Graphics","SetRenderTarget","UnityEngine.RenderTexture"),nullptr,{nullptr});
             }
             // HGRP draws world meshes with scene depth before native UI. The
@@ -331,6 +393,7 @@ public:
         for(auto& [key,mesh]:sections) append(mesh);
         for(auto& mesh:avatar) append(mesh);
         for(auto& mesh:scene) append(mesh);
+        for(auto& [key,group]:blendedSections) for(auto& [layer,mesh]:group) append(mesh);
         return count;
     }
     void overlay(BridgeMemory& memory) {
@@ -354,6 +417,16 @@ public:
         api.setActive(canvas,GetTickCount64()-lastImmediateHud>250);++hudFrames;
     }
     void message(unsigned type,const std::vector<unsigned char>& payload,unity::V3 player) {
+        if(type==proto::kRenAtlasRegion) {
+            const auto header=read<proto::RenAtlasRegion>(payload);
+            auto found=alphaTextures.find(0);if(found==alphaTextures.end()||!textures.contains(0)) return;
+            layers::patch(found->second,header,payload.data()+sizeof(header),payload.size()-sizeof(header));
+            auto* bytes=api.array("Color32",payload.data()+sizeof(header),std::size_t(header.width)*header.height,4);
+            unity::Api::TemporaryRoot root(api.raw(),bytes);
+            int x=int(header.x),y=int(header.y),w=int(header.width),h=int(header.height);
+            api.call(api.method("Texture2D","SetPixels32","System.Int32|System.Int32|System.Int32|System.Int32|UnityEngine.Color32[]"),textures.at(0),{&x,&y,&w,&h,bytes});
+            atlasDirty=true;++atlasRegions;return;
+        }
         if(type==proto::kRenAtlas||type==proto::kRenTexture) {
             unsigned id=0,w,h;std::size_t offset;
             if(type==proto::kRenAtlas) {auto header=read<proto::RenAtlas>(payload);w=header.width;h=header.height;offset=sizeof(header);}
@@ -362,14 +435,30 @@ public:
             newTexture(id,w,h,payload.data()+offset);return;
         }
         if(type==proto::kRenClearAll) {
-            for(auto& [key,s]:sections) {api.destroy(s.object);api.destroy(s.mesh);}sections.clear();return;
+            for(auto& [key,s]:sections) {api.destroy(s.object);api.destroy(s.mesh);}sections.clear();
+            for(auto& [key,group]:blendedSections) for(auto& [layer,s]:group) {api.destroy(s.object);api.destroy(s.mesh);}blendedSections.clear();return;
         }
         if(type==proto::kRenSection) {
             auto header=read<proto::RenSection>(payload);std::array<int,3> key{header.sx,header.sy,header.sz};
             if(std::uint64_t(header.vertexCount)*sizeof(proto::RenVertex)>payload.size()-sizeof(header)) throw std::runtime_error("section payload invalid");
-            if(!header.vertexCount) {if(auto old=sections.find(key);old!=sections.end()) {api.destroy(old->second.object);api.destroy(old->second.mesh);sections.erase(old);}return;}
+            if(!header.vertexCount) {
+                if(auto old=sections.find(key);old!=sections.end()) {api.destroy(old->second.object);api.destroy(old->second.mesh);sections.erase(old);}
+                if(auto old=blendedSections.find(key);old!=blendedSections.end()) {for(auto& [layer,s]:old->second) {api.destroy(s.object);api.destroy(s.mesh);}blendedSections.erase(old);}
+                return;
+            }
             auto [entry,inserted]=sections.try_emplace(key);if(inserted) entry->second=createMesh("Minecraft blocks",true);
-            updateMesh(entry->second,reinterpret_cast<const proto::RenVertex*>(payload.data()+sizeof(header)),header.vertexCount,0,{float(header.sx*16),float(header.sy*16),float(header.sz*16)});++meshMessages;return;
+            auto parts=layers::split(reinterpret_cast<const proto::RenVertex*>(payload.data()+sizeof(header)),header.vertexCount);
+            unity::V3 at{float(header.sx*16),float(header.sy*16),float(header.sz*16)};
+            updateMesh(entry->second,parts.solid.data(),parts.solid.size(),0,at);
+            auto& group=blendedSections[key];
+            for(auto it=group.begin();it!=group.end();) {
+                if(!parts.blended.contains(it->first)) {api.destroy(it->second.object);api.destroy(it->second.mesh);it=group.erase(it);}else ++it;
+            }
+            for(auto& [layer,vertices]:parts.blended) {
+                auto [slot,fresh]=group.try_emplace(layer);if(fresh) slot->second=createMesh(layer[0]==1?"Minecraft translucent blocks":"Minecraft fluids",layer[0]==1);
+                updateMesh(slot->second,vertices.data(),vertices.size(),0,at,false,layer[0]!=3,layer[1]);
+            }
+            ++meshMessages;return;
         }
         if(type==proto::kRenAvatar||type==proto::kRenScene) {
             const bool isScene=type==proto::kRenScene;
@@ -389,7 +478,7 @@ public:
             for(unsigned i=0;i<header.batchCount;++i) {
                 auto batch=read<proto::RenBatch>(payload,headerBytes+i*sizeof(proto::RenBatch));
                 if(std::uint64_t(batch.first)+batch.count>header.vertexCount) throw std::runtime_error("avatar batch invalid");
-                updateMesh(meshes[i],reinterpret_cast<const proto::RenVertex*>(payload.data()+offset)+batch.first,batch.count,batch.texture,at,true);
+                updateMesh(meshes[i],reinterpret_cast<const proto::RenVertex*>(payload.data()+offset)+batch.first,batch.count,batch.texture,at,true,(batch.flags&1)!=0);
             }
             for(std::size_t i=header.batchCount;i<meshes.size();++i) {api.setActive(meshes[i].object,false);meshes[i].drawn=false;}
             if(isScene) ++sceneFrames;else ++avatarFrames;

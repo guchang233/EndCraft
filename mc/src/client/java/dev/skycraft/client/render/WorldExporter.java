@@ -599,7 +599,7 @@ public final class WorldExporter {
 				Direction normal = nx == 0 && ny == 0 && nz == 0 ? null : Direction.getApproximateNearest(nx, ny, nz);
 				float shade = normal == null ? 1.0F
 					: normal.getAxis() == Direction.Axis.Y ? this.cardinal.byFace(normal) : this.cardinal.up() * this.cardinal.byFace(normal);
-				int flags = flags(this.fluidTranslucent, normal);
+				int flags = flags(this.fluidTranslucent, normal) | 128; // fluid: visual mesh never becomes a solid host collider
 				for (int k : new int[] { 0, 1, 2, 0, 2, 3 }) {
 					int b = k * 8;
 					this.vertex(this.fq[b], this.fq[b + 1], this.fq[b + 2], this.fq[b + 3], this.fq[b + 4],
