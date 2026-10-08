@@ -5,6 +5,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -50,9 +51,31 @@ jobs:
         run: python tools/fetch-neoforge-mods.py
 
       - name: Build and test NeoForge guest
-        shell: cmd
+        shell: pwsh
         working-directory: mc-neoforge
-        run: gradlew.bat build --console=plain
+        run: |
+          & .\gradlew.bat build --console=plain *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/neoforge-build.txt"
+          if ($LASTEXITCODE) {
+            # Surface the cause as annotations, which are readable without downloading logs.
+            Get-ChildItem build/test-results/test -Filter *.xml -ErrorAction SilentlyContinue | ForEach-Object {
+              $xml = [xml](Get-Content $_.FullName -Raw)
+              foreach ($case in $xml.testsuite.testcase) {
+                foreach ($problem in @($case.failure) + @($case.error)) {
+                  if ($problem) { $text = ($problem.InnerText -split "`n" | Select-Object -First 15) -join '%0A'; Write-Output "::error title=$($case.classname).$($case.name)::$text" }
+                }
+              }
+            }
+            $tail = (Get-Content "$env:RUNNER_TEMP/neoforge-build.txt" | Select-Object -Last 40) -join '%0A'
+            Write-Output "::error title=NeoForge Gradle output::$tail"
+            exit 1
+          }
+
+      - name: Upload NeoForge test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neoforge-test-reports
+          path: mc-neoforge/build/reports/tests/
 
       - name: Package release
         run: python tools/package-release.py
