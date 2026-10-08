@@ -6,6 +6,8 @@
 
 [下载 3.0](https://github.com/guchang233/EndCraft/releases/tag/v3.0.0) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
 
+另有独立的 [NeoForge 1.21.1／机械动力航空学实验工程](docs/NEOFORGE.md)：已构建并通过非游戏测试，尚未启动游戏验收；现有 3.0 Fabric 实例保留。
+
 ## 能做什么
 
 | 功能 | 当前效果 |

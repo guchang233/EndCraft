@@ -1,0 +1,36 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="skycraft"
+version="${version}"
+displayName="EndCraft NeoForge Experimental"
+description='''Experimental Minecraft 1.21.1 guest for EndCraft. Separate world; do not open Fabric 26.3 saves.'''
+[[dependencies.skycraft]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.247,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.skycraft]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="BOTH"
+[[mixins]]
+config="skycraft.mixins.json"
+[[mixins]]
+config="skycraft.client.mixins.json"
+[[dependencies.skycraft]]
+modId="create"
+type="optional"
+versionRange="[6.0.10,6.1)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.skycraft]]
+modId="sable"
+type="optional"
+versionRange="[2.0.6,2.1)"
+ordering="AFTER"
+side="BOTH"

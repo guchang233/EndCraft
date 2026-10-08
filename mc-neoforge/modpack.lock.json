@@ -1,0 +1,70 @@
+[
+  {
+    "project": "create",
+    "project_id": "LNytGWDc",
+    "version_id": "UjX6dr61",
+    "version": "6.0.10+mc1.21.1",
+    "filename": "create-1.21.1-6.0.10.jar",
+    "url": "https://cdn.modrinth.com/data/LNytGWDc/versions/UjX6dr61/create-1.21.1-6.0.10.jar",
+    "sha512": "11cc8fc049d2f67f6548c7abfada6b82a3adb5c7ca410a742de04bbca76e03862c518721b88d806f6e6d768a4d68531fdb903a85859b25d1484d550cc7bafd4b",
+    "dependencies": [],
+    "license_url": "https://github.com/Creators-of-Create/Create/blob/HEAD/LICENSE.md",
+    "source_url": "https://github.com/Creators-of-Create/Create"
+  },
+  {
+    "project": "create-aeronautics",
+    "project_id": "oWaK0Q19",
+    "version_id": "44pLdPGg",
+    "version": "1.3.2+mc1.21.1",
+    "filename": "create-aeronautics-bundled-1.21.1-1.3.2.jar",
+    "url": "https://cdn.modrinth.com/data/oWaK0Q19/versions/44pLdPGg/create-aeronautics-bundled-1.21.1-1.3.2.jar",
+    "sha512": "dc7e8e1148fa442243889ba29412207137e1bb86206e6c92bc0a589f1374a466e93de22bdbf14f753984d86c29308fbbdc0f14a4b9618b14c0ac1666a36b46f5",
+    "dependencies": [
+      {
+        "version_id": null,
+        "project_id": "T9PomCSv",
+        "file_name": null,
+        "dependency_type": "required"
+      },
+      {
+        "version_id": null,
+        "project_id": "LNytGWDc",
+        "file_name": null,
+        "dependency_type": "required"
+      }
+    ],
+    "license_url": "https://github.com/Creators-of-Aeronautics/Simulated-Project/blob/main/LICENSE.md",
+    "source_url": "https://github.com/Creators-of-Aeronautics/Simulated-Project"
+  },
+  {
+    "project": "sable",
+    "project_id": "T9PomCSv",
+    "version_id": "fg9dTRz9",
+    "version": "2.0.6+mc1.21.1",
+    "filename": "sable-neoforge-1.21.1-2.0.6.jar",
+    "url": "https://cdn.modrinth.com/data/T9PomCSv/versions/fg9dTRz9/sable-neoforge-1.21.1-2.0.6.jar",
+    "sha512": "76d293ce751a01cb9c095a3659b0a41e03e005480bc9d76dfdc73ec7c2eabf7923740c7b077921d42616673c496cd5143569f2085ddcebe174fd91d81e2a04b8",
+    "dependencies": [
+      {
+        "version_id": null,
+        "project_id": "3KUWeVhG",
+        "file_name": null,
+        "dependency_type": "embedded"
+      },
+      {
+        "version_id": null,
+        "project_id": "LNytGWDc",
+        "file_name": null,
+        "dependency_type": "optional"
+      },
+      {
+        "version_id": null,
+        "project_id": "qy8EtCnG",
+        "file_name": null,
+        "dependency_type": "optional"
+      }
+    ],
+    "license_url": "https://github.com/ryanhcode/sable/blob/main/LICENSE.md",
+    "source_url": "https://github.com/ryanhcode/sable"
+  }
+]

@@ -7,6 +7,10 @@ dist/
 mc/.gradle/
 mc/build/
 mc/run/
+mc-neoforge/.gradle/
+mc-neoforge/build/
+mc-neoforge/run/
+mc-neoforge/libs/
 reports/
 mc/logs/
 *.log

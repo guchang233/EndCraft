@@ -1,0 +1,50 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+group = 'dev.skycraft'
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+java.withSourcesJar()
+repositories { mavenCentral() }
+neoForge {
+    version = project.neo_version
+    runs {
+        client {
+            client()
+            gameDirectory = file('run')
+            programArguments.addAll '--username', 'EndCraftNeo', '--width', '640', '--height', '360'
+            jvmArguments.addAll '--enable-native-access=ALL-UNNAMED', '-Xmx3G'
+            systemProperty 'skycraft.quitWithSkyrim', 'false'
+            systemProperty 'skycraft.startHidden', providers.gradleProperty('bridgeHost').getOrElse('false')
+            systemProperty 'endcraft.allowHostConnection', providers.gradleProperty('bridgeHost').getOrElse('false')
+        }
+    }
+    mods { skycraft { sourceSet sourceSets.main } }
+}
+dependencies {
+    implementation 'org.jspecify:jspecify:1.0.0'
+    runtimeOnly fileTree(dir: 'libs', include: '*.jar')
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+// Plain JUnit with named classes for math/bytecode checks. No game or mod-loader bootstrap.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs.addAll '-Xmaxerrs', '300'
+}
+compileJava { options.release = 22 }
+test {
+    useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    forkEvery = 1
+    systemProperty 'endcraft.allowHostConnection', 'true'
+}
+processResources {
+    exclude 'fabric.mod.json'
+    inputs.property 'version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version }
+}
+jar { from('LICENSE') { rename { 'LICENSE_EndCraft' } } }

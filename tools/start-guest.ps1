@@ -1,8 +1,21 @@
-param([string]$JavaHome = $(if ($env:ENDCRAFT_JAVA_HOME) { $env:ENDCRAFT_JAVA_HOME } else { Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon' }))
+param(
+    [string]$JavaHome = $(if ($env:ENDCRAFT_JAVA_HOME) { $env:ENDCRAFT_JAVA_HOME } else { Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon' }),
+    [ValidateSet('fabric','neoforge')]
+    [string]$Loader = $(if ($env:ENDCRAFT_GUEST_LOADER) {$env:ENDCRAFT_GUEST_LOADER} else {'fabric'})
+)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
+if ($Loader -eq 'neoforge') {
+    New-Item -ItemType Directory -Path (Join-Path $taskRoot 'reports') -Force | Out-Null
+    & (Join-Path $PSScriptRoot 'start-neoforge.ps1') -BridgeHost -JavaHome $JavaHome *> (Join-Path $taskRoot 'reports\neoforge-startup.log')
+    exit $LASTEXITCODE
+}
 $taskLog=Join-Path $taskRoot 'reports\guest-startup.log'
 try {
+    $taskNeoClients = @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {
+        $_.CommandLine -and $_.CommandLine.Contains('-Dendcraft.allowHostConnection=true')
+    })
+    if ($taskNeoClients.Count) {throw 'A NeoForge EndCraft guest is running. Save and quit it normally before switching to Fabric.'}
     $taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {$_.CommandLine -and $_.CommandLine.Contains('net.fabricmc.devlaunchinjector.Main') -and ($_.CommandLine.Contains((Join-Path $taskRoot 'mc')) -or $_.CommandLine.Contains('-Dskycraft.startHidden=true'))})
     if($taskClients.Count) {
         if($taskClients.Count -eq 1 -and $taskClients[0].CommandLine.Contains((Join-Path $taskRoot 'mc'))) {
