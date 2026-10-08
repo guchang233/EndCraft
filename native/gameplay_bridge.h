@@ -57,6 +57,7 @@ class GameplayBridge {
     std::atomic<int> queuedInputMode{-1};
     bool modeNotification=true;
     std::atomic<std::uint64_t> suppressedNativeKeys=0;
+    std::atomic<std::uint64_t> suppressedNativeBindings=0;
     bool nativeKeyHooks=false;
     std::vector<unsigned char> payload;
     std::string error;
@@ -273,6 +274,10 @@ public:
         if(exclusiveGate.load(std::memory_order_acquire)) {++suppressedNativeKeys;return true;}
         return false;
     }
+    bool suppressNativeBindings() noexcept {
+        if(exclusiveGate.load(std::memory_order_acquire)) {++suppressedNativeBindings;return true;}
+        return false;
+    }
     void inputHooksReady(bool value) {nativeKeyHooks=value;}
     void inputExclusive(bool value) {queuedInputMode.store(value?1:0);}
     void observeNativeBomb(void* id,float strength,std::int64_t mask) {combat.observeNativeBomb(id,strength,mask);}
@@ -485,6 +490,9 @@ public:
             if(!initialized) {
                 epoch=std::uint32_t(GetTickCount64())|1u;teleport=epoch;
                 origin=suppliedAnchor?initialHost:where;safeHost=where;characterId=reinterpret_cast<std::uintptr_t>(character);
+                // Reuse the saved world anchor but start at the actual host feet,
+                // never at a stale guest pose from a previous game session.
+                teleportPosition=toMc(where);
                 renderer.init(host,origin);initialized=true;
                 // The game's RaycastHit has ECS fields; get its actual value size rather than using stock Unity size.
                 auto cls=api.klass("RaycastHit","UnityEngine.PhysicsModule.dll");
@@ -665,6 +673,7 @@ public:
             {"host_input_mask",inputMask.snapshot()},
             {"mc_exclusive_hotkeys",inputMode.exclusive()},{"native_hotkeys_suppressed",exclusiveGate.load()},
             {"native_keyboard_hooks",nativeKeyHooks},{"suppressed_native_key_queries",suppressedNativeKeys.load()},
+            {"suppressed_native_binding_updates",suppressedNativeBindings.load()},
             {"scroll_error",scrollError},
             {"pipeline_frames",pipelineFrames},{"pipeline_draw_commands",pipelineDraws},{"pipeline_error",pipelineError},
             {"frame_captured",captured&&captureError.empty()},{"capture_error",captureError},

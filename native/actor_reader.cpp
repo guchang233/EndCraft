@@ -45,6 +45,11 @@ motion_probe::Probe motion;
 endcraft::GameplayBridge gameplay;
 using NativeKey=bool(__fastcall*)(int,void*);
 NativeKey nextNativeKey=nullptr,nextNativeKeyDown=nullptr,nextNativeKeyUp=nullptr;
+using NativeBindingTick=void(__fastcall*)(void*,void*);
+NativeBindingTick nextNativeBindingTick=nullptr;
+void __fastcall onNativeBindingTick(void* instance,void* info) {
+    if(!gameplay.suppressNativeBindings()&&nextNativeBindingTick) nextNativeBindingTick(instance,info);
+}
 bool __fastcall onNativeKey(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKey&&nextNativeKey(key,info);}
 bool __fastcall onNativeKeyDown(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKeyDown&&nextNativeKeyDown(key,info);}
 bool __fastcall onNativeKeyUp(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKeyUp&&nextNativeKeyUp(key,info);}
@@ -327,6 +332,12 @@ BE_Result start() {
         }
         gameplay.inputHooksReady(installed);
         if(!installed) {host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;}
+        BE_MethodDescriptorV1 bindingDescriptor{"Input.Beyond.dll","Beyond.Input","InputManager","_OnAfterInputUpdate",nullptr,"System.Void",0};
+        BE_ResolvedMethodV1 bindingResolved{};
+        if(api->resolve_method(api->context,&bindingDescriptor,&bindingResolved)!=BE_Result_Ok||
+            host.hooks->create(host.hooks->context,kId,bindingResolved.method_pointer,reinterpret_cast<void*>(onNativeBindingTick),reinterpret_cast<void**>(&nextNativeBindingTick),&handle)!=BE_Result_Ok) {
+            host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;
+        }
         BE_MethodDescriptorV1 hitDescriptor{"Gameplay.Beyond.dll","Beyond.Gameplay.Core","BattleHitReactionManager","Hit",
             "Beyond.Gameplay.Core.Entity|System.String|System.Single|Beyond.Gameplay.DamageDecorateMask|System.Boolean|Beyond.Gameplay.Core.BattleHitReactionManager.HitInfo","System.Void",6};
         BE_ResolvedMethodV1 hitResolved{};
@@ -378,6 +389,12 @@ BE_Result BE_CALL initialize(const BE_ThirdPartyHostV1* input,const char* config
         if(!json::parse(config?config:"{}").is_object()) return BE_Result_InvalidArgument;
         host={};std::memcpy(&host,input,(std::min)(std::size_t(input->struct_size),sizeof(host)));initialized=true;
 #ifdef ENDCRAFT_GAMEPLAY
+        const auto initialConfig=json::parse(config?config:"{}");
+        if(initialConfig.contains("initial_host_anchor")) {
+            auto anchor=initialConfig.at("initial_host_anchor").get<std::vector<float>>();
+            if(anchor.size()!=3) return BE_Result_InvalidArgument;
+            gameplay.initialAnchor({anchor[0],anchor[1],anchor[2]},{.5f,64,.5f});
+        }
         if(json::parse(config?config:"{}").value("auto_enable",false)) {
             // Enable once; explicit disable and genuine faults must remain disabled.
             // Ordinary scene changes are handled on the game thread by GameplayBridge.

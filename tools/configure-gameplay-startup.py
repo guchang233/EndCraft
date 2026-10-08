@@ -1,5 +1,6 @@
 """Set local startup for the verified bridge without exposing RPC credentials."""
 import argparse
+import math
 import importlib.util
 import json
 import os
@@ -7,7 +8,9 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 
-def main(automatic,kind='gameplay29'):
+def main(automatic,kind='gameplay31',anchor=None):
+    if anchor is not None and (len(anchor)!=3 or any(not isinstance(x,(int,float)) or not math.isfinite(x) for x in anchor)):
+        raise RuntimeError('A finite three-component world anchor is required.')
     spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-probe.py')
     installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
     original_state=installer.STATE.read_bytes()
@@ -25,6 +28,7 @@ def main(automatic,kind='gameplay29'):
         config=dict(module.get('configuration',{}))
         config['auto_enable']=automatic
         config['guest_launcher']=str(launcher)
+        if anchor is not None: config['initial_host_anchor']=anchor
         module['configuration']=config
         for entry in data['modules']:
             if entry['id']=='endcraft.canvas': entry['enabled']=False
@@ -51,5 +55,8 @@ if __name__=='__main__':
     group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--auto-start',action='store_true')
     group.add_argument('--manual',action='store_true')
-    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29'],default='gameplay29')
-    args=parser.parse_args();main(args.auto_start,args.module)
+    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31'],default='gameplay31')
+    parser.add_argument('--anchor-report',type=Path,help='Previously verified runtime report whose world anchor should be retained.')
+    args=parser.parse_args()
+    anchor=json.loads(args.anchor_report.read_text(encoding='utf-8'))['body']['gameplay']['origin_raw_units'] if args.anchor_report else None
+    main(args.auto_start,args.module,anchor)
