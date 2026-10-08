@@ -43,6 +43,17 @@ motion_probe::Probe motion;
 #endif
 #ifdef ENDCRAFT_GAMEPLAY
 endcraft::GameplayBridge gameplay;
+using NativeKey=bool(__fastcall*)(int,void*);
+NativeKey nextNativeKey=nullptr,nextNativeKeyDown=nullptr,nextNativeKeyUp=nullptr;
+bool __fastcall onNativeKey(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKey&&nextNativeKey(key,info);}
+bool __fastcall onNativeKeyDown(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKeyDown&&nextNativeKeyDown(key,info);}
+bool __fastcall onNativeKeyUp(int key,void* info) {return !gameplay.suppressNativeKey()&&nextNativeKeyUp&&nextNativeKeyUp(key,info);}
+using NativeHit=void(__fastcall*)(void*,void*,void*,float,std::int64_t,bool,void*,void*);
+NativeHit nextNativeHit=nullptr;
+void __fastcall onNativeHit(void* instance,void* attacker,void* id,float value,std::int64_t mask,bool important,void* hit,void* info) {
+    gameplay.observeNativeBomb(id,value,mask);
+    if(nextNativeHit) nextNativeHit(instance,attacker,id,value,mask,important,hit,info);
+}
 using TeleportNotify=void(__fastcall*)(void*,void*);
 TeleportNotify nextTeleportBegin=nullptr,nextTeleportFinish=nullptr;
 BE_ResolvedMethodV1 teleportBegin{},teleportFinish{};
@@ -304,6 +315,27 @@ BE_Result start() {
     const auto result=host.hooks->create(host.hooks->context,kId,tick.method_pointer,reinterpret_cast<void*>(onTick),reinterpret_cast<void**>(&next),&handle);
 #ifdef ENDCRAFT_GAMEPLAY
     if(result==BE_Result_Ok) {
+        const char* names[]={"GetKey","GetKeyDown","GetKeyUp"};
+        void* callbacks[]={reinterpret_cast<void*>(onNativeKey),reinterpret_cast<void*>(onNativeKeyDown),reinterpret_cast<void*>(onNativeKeyUp)};
+        void** forwarders[]={reinterpret_cast<void**>(&nextNativeKey),reinterpret_cast<void**>(&nextNativeKeyDown),reinterpret_cast<void**>(&nextNativeKeyUp)};
+        bool installed=true;
+        for(int i=0;i<3;++i) {
+            BE_MethodDescriptorV1 descriptor{"Input.Beyond.dll","Beyond.Input","KeyboardHandler",names[i],"Beyond.Input.KeyboardKeyCode","System.Boolean",1};
+            BE_ResolvedMethodV1 resolved{};
+            if(api->resolve_method(api->context,&descriptor,&resolved)!=BE_Result_Ok||
+               host.hooks->create(host.hooks->context,kId,resolved.method_pointer,callbacks[i],forwarders[i],&handle)!=BE_Result_Ok) {installed=false;break;}
+        }
+        gameplay.inputHooksReady(installed);
+        if(!installed) {host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;}
+        BE_MethodDescriptorV1 hitDescriptor{"Gameplay.Beyond.dll","Beyond.Gameplay.Core","BattleHitReactionManager","Hit",
+            "Beyond.Gameplay.Core.Entity|System.String|System.Single|Beyond.Gameplay.DamageDecorateMask|System.Boolean|Beyond.Gameplay.Core.BattleHitReactionManager.HitInfo","System.Void",6};
+        BE_ResolvedMethodV1 hitResolved{};
+        if(api->resolve_method(api->context,&hitDescriptor,&hitResolved)!=BE_Result_Ok||
+            host.hooks->create(host.hooks->context,kId,hitResolved.method_pointer,reinterpret_cast<void*>(onNativeHit),reinterpret_cast<void**>(&nextNativeHit),&handle)!=BE_Result_Ok) {
+            host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;
+        }
+    }
+    if(result==BE_Result_Ok) {
         BE_MethodDescriptorV1 pipeline{"HG.RenderPipelines.Runtime.dll","HG.Rendering.Runtime","HGRenderPipeline","ExecuteRenderRequestCPP",
             "HG.Rendering.Runtime.HGRenderPipeline.RenderRequest&|UnityEngine.Rendering.ScriptableRenderContext|UnityEngine.Rendering.CommandBuffer","System.Void",3};
         BE_MethodDescriptorV1 camera{"UnityEngine.CoreModule.dll","UnityEngine","Camera","get_main",nullptr,"UnityEngine.Camera",0};
@@ -399,6 +431,10 @@ BE_Result BE_CALL message(const char* request,const char* body) {
         }
 #endif
 #ifdef ENDCRAFT_GAMEPLAY
+        if(action=="input_exclusive") {
+            gameplay.inputExclusive(json::parse(body).at("enabled").get<bool>());
+            return host.reply(host.context,request,BE_Result_Ok,"{\"input_mode_queued\":true}");
+        }
         if(action=="recover") {gameplay.recover();return host.reply(host.context,request,BE_Result_Ok,"{\"recovery_queued\":true}");}
         if(action=="renderer_probe") {gameplay.rendererProbe();return host.reply(host.context,request,BE_Result_Ok,"{\"probe_queued\":true}");}
         if(action=="native_rendering") {gameplay.nativeRendering(json::parse(body).at("enabled").get<bool>());return host.reply(host.context,request,BE_Result_Ok,"{\"render_mode_queued\":true}");}

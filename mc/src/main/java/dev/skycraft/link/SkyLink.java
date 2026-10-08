@@ -410,28 +410,34 @@ public final class SkyLink {
 	}
 
 	/** Drains every pending input event. Render thread only. */
-	public static synchronized void drainInput(InputSink sink) {
-		MemorySegment s = shm;
-		if (s == null) {
-			return;
+	public static void drainInput(InputSink sink) {
+		java.util.List<int[]> events = new java.util.ArrayList<>();
+		synchronized (SkyLink.class) {
+			MemorySegment s = shm;
+			if (s == null) {
+				return;
+			}
+			long base = OFF_INPUT_RING;
+			long head = (long) LONG.getAcquire(s, base + IR_HEAD);
+			long tail = s.get(JAVA_LONG, base + IR_TAIL);
+			if (head - tail > INPUT_RING_ENTRIES) {
+				tail = head - INPUT_RING_ENTRIES; // producer lapped us; drop the oldest
+			}
+			while (tail < head) {
+				long e = base + IR_DATA + (tail & (INPUT_RING_ENTRIES - 1)) * 16L;
+				int type = Short.toUnsignedInt(s.get(JAVA_SHORT, e));
+				int code = Short.toUnsignedInt(s.get(JAVA_SHORT, e + 2));
+				int a = s.get(JAVA_INT, e + 4);
+				int b = s.get(JAVA_INT, e + 8);
+				int c = s.get(JAVA_INT, e + 12);
+				tail++;
+				events.add(new int[] { type, code, a, b, c });
+			}
+			LONG.setRelease(s, base + IR_TAIL, tail);
 		}
-		long base = OFF_INPUT_RING;
-		long head = (long) LONG.getAcquire(s, base + IR_HEAD);
-		long tail = s.get(JAVA_LONG, base + IR_TAIL);
-		if (head - tail > INPUT_RING_ENTRIES) {
-			tail = head - INPUT_RING_ENTRIES; // producer lapped us; drop the oldest
-		}
-		while (tail < head) {
-			long e = base + IR_DATA + (tail & (INPUT_RING_ENTRIES - 1)) * 16L;
-			int type = Short.toUnsignedInt(s.get(JAVA_SHORT, e));
-			int code = Short.toUnsignedInt(s.get(JAVA_SHORT, e + 2));
-			int a = s.get(JAVA_INT, e + 4);
-			int b = s.get(JAVA_INT, e + 8);
-			int c = s.get(JAVA_INT, e + 12);
-			tail++;
-			sink.accept(type, code, a, b, c);
-		}
-		LONG.setRelease(s, base + IR_TAIL, tail);
+		// A click can save/quit and wait for the integrated server. That server
+		// uses SkyLink too, so never run a game callback under the mapping lock.
+		for (int[] e : events) sink.accept(e[0], e[1], e[2], e[3], e[4]);
 	}
 
 	// ---- actor table (read) ----------------------------------------------------------------

@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 
-def main(automatic,kind='gameplay27'):
+def main(automatic,kind='gameplay29'):
     spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-probe.py')
     installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
     original_state=installer.STATE.read_bytes()
@@ -51,5 +51,5 @@ if __name__=='__main__':
     group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--auto-start',action='store_true')
     group.add_argument('--manual',action='store_true')
-    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27'],default='gameplay27')
+    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29'],default='gameplay29')
     args=parser.parse_args();main(args.auto_start,args.module)

@@ -3,6 +3,7 @@
 #include "bridge_memory.h"
 #include "coordinate_map.h"
 #include "native_passengers.h"
+#include "native_interaction.h"
 #include "nlohmann/json.hpp"
 #include <unordered_map>
 #include <cmath>
@@ -13,6 +14,10 @@ namespace endcraft {
 class NativeCombat {
     unity::Api api;
     NativePassengers passengers;
+    NativeInteraction interaction;
+    std::uint64_t hurtRequests=0,hurtCalls=0,hurtStateChanges=0;
+    int lastHurtAnim=0;
+    std::string hurtError;
     struct Actor {void* entity;void* ability;std::uint32_t entityRoot,abilityRoot;unity::V3 position;double hp,maxHp;bool hostile,rideable;};
     std::unordered_map<std::uint32_t,Actor> targets;
     std::uint64_t lastScan=0,requests=0,accepted=0,rejected=0,confirmedHpDrops=0;
@@ -31,6 +36,44 @@ class NativeCombat {
     static constexpr const char* space="Beyond.Gameplay.Core";
     BE_ResolvedMethodV1 method(const char* type,const char* name,const char* params="",const char* result="System.Void") {
         return api.method(type,name,params,result,assembly,space);
+    }
+    void react(void* entity,void* attacker,const proto::McEvent& event) noexcept {
+        ++hurtRequests;
+        try {
+            auto* hurt=api.call(method("Entity","get_enemyHurtAnimCom","","Beyond.Gameplay.Core.EnemyHurtAnimComponent"),entity);
+            if(!hurt) {hurtError="enemy_has_no_hurt_animation_component";return;}
+            const bool heavy=(event.flags&(proto::kHitExplosive|proto::kHitCritical))!=0;
+            int animation=enumValue<int>("EnemyHurtAnim",heavy?"MiddleLeft":"LightLeft");
+            auto intensity=enumValue<std::uint8_t>("EnemyHurtShakeIntensity",heavy?"Strong":"Mild");
+            struct NullableVector {bool has;unsigned char pad[3];unity::V3 value;};
+            struct NullableFloat {bool has;unsigned char pad[3];float value;};
+            NullableVector face{},hit{};NullableFloat push{},transition{};
+            bool additive=true,randFrame=false,weaken=false,scale=false,dead=false;
+            float immobilized=heavy?.18f:.08f,unmovable=heavy?.15f:.06f;int armor=-1;
+            const auto call=method("EnemyHurtAnimComponent","ApplyEnemyHurtAnim",
+                "Beyond.Gameplay.Core.EnemyHurtAnim|System.Boolean|Beyond.Gameplay.Core.EnemyHurtShakeIntensity|System.Boolean|System.Nullable<UnityEngine.Vector3>|Beyond.Gameplay.Core.AbilitySystem|System.Boolean|System.Single|System.Single|System.Nullable<System.Single>|UnityEngine.AnimationCurve|System.Boolean|System.Boolean|System.Boolean|System.Boolean|System.Nullable<UnityEngine.Vector3>|System.Int32|System.Nullable<System.Single>");
+            // Nullable<T> crosses the value-type ABI; verify the actual game's
+            // argument sizes before passing any stack storage into it.
+            auto dll=GetModuleHandleW(L"GameAssembly.dll");
+            auto param=reinterpret_cast<const void*(*)(const void*,unsigned)>(GetProcAddress(dll,"il2cpp_method_get_param"));
+            auto klass=reinterpret_cast<const void*(*)(const void*)>(GetProcAddress(dll,"il2cpp_class_from_type"));
+            auto size=reinterpret_cast<int(*)(const void*,unsigned*)>(GetProcAddress(dll,"il2cpp_class_value_size"));
+            unsigned alignment=0;
+            if(!param||!klass||!size||size(klass(param(call.method_info,4)),&alignment)!=sizeof(face)
+                ||size(klass(param(call.method_info,9)),&alignment)!=sizeof(push)) throw std::runtime_error("hurt animation nullable ABI mismatch");
+            BE_FieldDescriptorV1 descriptor{assembly,space,"EnemyHurtAnimComponent","m_currentHurtAnim","Beyond.Gameplay.Core.EnemyHurtAnim"};BE_ResolvedFieldV1 field{};
+            if(api.raw()->resolve_field(api.raw()->context,&descriptor,&field)!=BE_Result_Ok) throw std::runtime_error("hurt animation state contract missing");
+            auto read=[&]() {
+                auto* box=api.raw()->field_get_value_object(api.raw()->context,field.field_info,hurt);
+                auto* value=box?api.raw()->object_unbox(api.raw()->context,box):nullptr;
+                if(!value) throw std::runtime_error("hurt animation state unavailable");
+                return *static_cast<int*>(value);
+            };
+            const int before=read();
+            api.call(call,hurt,{&animation,&additive,&intensity,&randFrame,&face,attacker,&weaken,&immobilized,&unmovable,&push,nullptr,&scale,&scale,&scale,&dead,&hit,&armor,&transition});
+            ++hurtCalls;lastHurtAnim=read();if(lastHurtAnim!=before) ++hurtStateChanges;
+            hurtError.clear();
+        } catch(const std::exception& e) {hurtError=e.what();}
     }
     template<class T> T enumValue(const char* type,const char* name,const char* asmName=assembly,const char* ns=space) {
         auto runtimeModule=GetModuleHandleW(L"GameAssembly.dll");
@@ -97,7 +140,8 @@ class NativeCombat {
         memory.actors(records);
     }
 public:
-    void bind(const BE_HostApiV1* runtime) {api.bind(runtime);passengers.bind(runtime);}
+    void bind(const BE_HostApiV1* runtime) {api.bind(runtime);passengers.bind(runtime);interaction.bind(runtime);}
+    void observeNativeBomb(void* id,float strength,std::int64_t mask) {interaction.observeBomb(id,strength,mask);}
     void releaseProtection() noexcept {
         if(protectionBox) try {
             api.call(method("AbilitySystem/AllowedDamageMaskHandle","Revert"),api.raw()->object_unbox(api.raw()->context,protectionBox));
@@ -140,6 +184,7 @@ public:
             if(now-lastScan>=250) {lastScan=now;scan(player,position,origin,mcOrigin,memory);}
             proto::McEvent event{};
             for(unsigned i=0;i<proto::kEventRingEntries&&memory.event(event);++i) {
+                if(event.type==proto::kEvExplosion) {interaction.explode(player,event,origin,mcOrigin);continue;}
                 if(event.type==proto::kEvActorVehicle) {
                     auto found=targets.find(event.formId);
                     passengers.accept(event,found==targets.end()?nullptr:found->second.entity,
@@ -158,7 +203,7 @@ public:
                 // hit to the same fraction of the target's native maximum health.
                 double amount=double(std::clamp(event.a,0.f,10000.f))*found->second.maxHp/virtualEnemyHealth;
                 int damageType=enumValue<int>("DamageType",(event.flags&proto::kHitFire)?"Fire":"Physical","Common.Beyond.dll","Beyond.GEnums");
-                std::int64_t mask=enumValue<std::int64_t>("DamageDecorateMask","None",assembly,"Beyond.Gameplay");
+                std::int64_t mask=enumValue<std::int64_t>("DamageDecorateMask",(event.flags&proto::kHitExplosive)?"Bomb":"NormalAttack",assembly,"Beyond.Gameplay");
                 int visual=enumValue<int>("AbilitySystem/Modifier/DamageVisualImportance","Level0");
                 bool option=(event.flags&proto::kHitCritical)!=0;
                 auto* boxed=api.call(method("AbilitySystem/Modifier","NewDamage",
@@ -172,6 +217,7 @@ public:
                 hpAfter=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
                 serverHpAfter=api.value<double>(method("AbilitySystem","get_serverHp","","System.Double"),found->second.ability);
                 if(result==enumValue<int>("AbilitySystem/Modifier/ApplyResult","Succeed")) {
+                    react(found->second.entity,source,event);
                     ++accepted;watched=event.formId;hpBefore=hp;serverHpBefore=serverHp;watchUntil=now+10000;lastResult="mc_damage_applied_pending_server_confirmation";
                     if(hpAfter<hp) ++localHpDrops;
                 } else {++rejected;lastResult="damage_modifier_rejected_by_game";}
@@ -181,10 +227,11 @@ public:
         } catch(const std::exception& e) {error=e.what();passengers.stop();}
     }
     void stopPassengers() {passengers.stop();}
-    nlohmann::json snapshot() const {
+    nlohmann::json snapshot() {
         nlohmann::json actors=nlohmann::json::array();
         for(const auto& [id,a]:targets) actors.push_back({{"id",id},{"position",{a.position.x,a.position.y,a.position.z}},{"hp",a.hp},{"max_hp",a.maxHp},{"hostile",a.hostile},{"rideable",a.rideable}});
-        return {{"passengers",passengers.snapshot()},{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_actors",targets.size()},{"nearby_enemies",std::count_if(targets.begin(),targets.end(),[](const auto& a){return a.second.hostile;})},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
+        return {{"native_explosions",interaction.snapshot()}, {"hurt_reactions",{{"requests",hurtRequests},{"calls",hurtCalls},{"state_changes",hurtStateChanges},{"last_animation",lastHurtAnim},{"error",hurtError}}},
+            {"passengers",passengers.snapshot()},{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_actors",targets.size()},{"nearby_enemies",std::count_if(targets.begin(),targets.end(),[](const auto& a){return a.second.hostile;})},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
             {"confirmed_hp_drops",confirmedHpDrops},{"watched_target",watched},{"hp_before",hpBefore},{"hp_after",hpAfter},
             {"server_hp_before",serverHpBefore},{"server_hp_after",serverHpAfter},{"last_result",lastResult},{"error",error}};
     }

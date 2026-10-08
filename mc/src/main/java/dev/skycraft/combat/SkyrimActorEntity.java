@@ -92,6 +92,7 @@ public class SkyrimActorEntity extends LivingEntity {
 			return;
 		}
 		this.pendingDamage += dmg;
+		if (source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) this.pendingFlags |= Proto.HIT_EXPLOSIVE;
 		if (source.getDirectEntity() instanceof Projectile) {
 			this.pendingFlags |= Proto.HIT_PROJECTILE;
 		}

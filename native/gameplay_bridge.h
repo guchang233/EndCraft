@@ -2,6 +2,7 @@
 #include "unity_renderer.h"
 #include "coordinate_map.h"
 #include "player_input_mask.h"
+#include "input_mode.h"
 #include "camera_math.h"
 #include "native_combat.h"
 #include "host_authority.h"
@@ -44,12 +45,19 @@ class GameplayBridge {
     static constexpr unsigned kMaxRenderMessages=512;
     static constexpr std::size_t kRenderByteBudget=8ull<<20;
     int terrainIndex=4;
+    int terrainSweep=0;
     int terrainCenterX=INT_MIN,terrainCenterZ=INT_MIN;
     unsigned terrainHits=0,terrainTriangles=0;
     std::uint64_t terrainSamples=0,safetyStops=0;
     std::string lastRecoveryReason;
     unity::V3 safeHost{};
     bool keys[256]{};bool buttons[4]{};
+    InputMode inputMode;
+    std::atomic<bool> exclusiveGate=false;
+    std::atomic<int> queuedInputMode{-1};
+    bool modeNotification=true;
+    std::atomic<std::uint64_t> suppressedNativeKeys=0;
+    bool nativeKeyHooks=false;
     std::vector<unsigned char> payload;
     std::string error;
     std::string renderError,hideError;
@@ -90,6 +98,15 @@ class GameplayBridge {
     unity::V3 toHost(unity::V3 value) {return coordinates::toHost(origin,mcOrigin,value);}
     unity::V3 toMc(unity::V3 value) {return coordinates::toMc(origin,mcOrigin,value);}
     void input(bool focus) {
+        const int queued=queuedInputMode.exchange(-1);
+        if(queued>=0) {inputMode.set(queued!=0);modeNotification=true;}
+        if(inputMode.poll(focus,(GetAsyncKeyState(VK_OEM_1)&0x8000)!=0)) {
+            modeNotification=true;
+            memory.input({proto::kInReleaseAll,0,0,0,0});
+            std::fill(std::begin(keys),std::end(keys),false);
+            std::fill(std::begin(buttons),std::end(buttons),false);
+        }
+        if(modeNotification&&focus&&memory.input({proto::kInInputMode,0,inputMode.exclusive()?1:0,0,0})) modeNotification=false;
         if(focus) {
             try {
                 const auto delta=api.value<unity::V2>(api.method("Input","get_mouseScrollDelta","","UnityEngine.Vector2","UnityEngine.InputLegacyModule.dll"));
@@ -109,7 +126,7 @@ class GameplayBridge {
         const int keyPairs[][2]={{VK_LSHIFT,225},{VK_RSHIFT,229},{VK_LCONTROL,224},{VK_RCONTROL,228},{VK_LMENU,226},{VK_RMENU,230},{'T',23},{VK_OEM_2,56},{VK_RETURN,40},{VK_BACK,42},{VK_TAB,43},
             {VK_LEFT,80},{VK_RIGHT,79},{VK_UP,82},{VK_DOWN,81},{VK_HOME,74},{VK_END,77},{VK_DELETE,76},
             {'B',5},{'C',6},{'G',10},{'H',11},{'I',12},{'J',13},{'K',14},{'L',15},{'M',16},{'N',17},{'O',18},{'P',19},{'R',21},{'U',24},{'V',25},{'X',27},{'Y',28},{'Z',29},
-            {VK_OEM_1,51},{VK_OEM_PLUS,46},{VK_OEM_COMMA,54},{VK_OEM_MINUS,45},{VK_OEM_PERIOD,55},{VK_OEM_3,53},{VK_OEM_4,47},{VK_OEM_5,49},{VK_OEM_6,48},{VK_OEM_7,52},
+            {VK_OEM_PLUS,46},{VK_OEM_COMMA,54},{VK_OEM_MINUS,45},{VK_OEM_PERIOD,55},{VK_OEM_3,53},{VK_OEM_4,47},{VK_OEM_5,49},{VK_OEM_6,48},{VK_OEM_7,52},
             {'W',26},{'A',4},{'S',22},{'D',7},{VK_SPACE,44},
             {'E',8},{'Q',20},{'F',9},{VK_F5,62},{VK_ESCAPE,41},{'1',30},{'2',31},{'3',32},{'4',33},{'5',34},{'6',35},{'7',36},{'8',37},{'9',38},{'0',39}};
         for(const auto& pair:keyPairs) {
@@ -187,12 +204,16 @@ class GameplayBridge {
         HostTerrainQuery query(renderer);
         // A measured height field for the first bridge. Vertical walls/caves still need mesh extraction.
         int centerX=int(std::floor(mc.x/8))*8,centerZ=int(std::floor(mc.z/8))*8;
+        // Refresh the player's current region every other sample; the ring of
+        // distant regions must not delay fresh support under moving feet.
         if(centerX!=terrainCenterX||centerZ!=terrainCenterZ) {terrainIndex=4;terrainCenterX=centerX;terrainCenterZ=centerZ;}
+        if((terrainSamples&1)==0) terrainIndex=4;
+        else {terrainIndex=terrainSweep;terrainSweep=(terrainSweep+1)%9;if(terrainSweep==4) terrainSweep=5;}
         const int minX=centerX+(terrainIndex%3-1)*8,minZ=centerZ+(terrainIndex/3-1)*8;
         float heights[81];bool valid[81];
         terrainHits=0;++terrainSamples;
         for(int z=0;z<=8;++z) for(int x=0;x<=8;++x) {
-            auto p=toHost({float(minX+x),mc.y,float(minZ+z)});p.y=toHost(mc).y+.75f;
+            auto p=toHost({float(minX+x),mc.y,float(minZ+z)});p.y=toHost(mc).y+2.f;
             unity::V3 hit{};auto i=z*9+x;valid[i]=ray(movement,p,hit);heights[i]=valid[i]?toMc(hit).y:0;
             terrainHits+=valid[i]?1u:0u;
         }
@@ -200,10 +221,10 @@ class GameplayBridge {
         int minY=int(std::floor(mc.y/8))*8-16,maxY=minY+39;
         for(int i=0;i<81;++i) if(valid[i]) minY=(std::min)(minY,int(std::floor(heights[i]/8))*8-8);
         for(int z=0;z<8;++z) for(int x=0;x<8;++x) {
-            if(minX+x==int(std::floor(mc.x))&&minZ+z==int(std::floor(mc.z))) {
+            if(std::abs(minX+x-int(std::floor(mc.x)))<=1&&std::abs(minZ+z-int(std::floor(mc.z)))<=1) {
                 float localHeight[25]{};bool localValid[25]{};
                 for(int lz=0;lz<=4;++lz) for(int lx=0;lx<=4;++lx) {
-                    auto p=toHost({minX+x+lx*.25f,mc.y,minZ+z+lz*.25f});p.y=toHost(mc).y+.75f;
+                    auto p=toHost({minX+x+lx*.25f,mc.y,minZ+z+lz*.25f});p.y=toHost(mc).y+2.f;
                     unity::V3 hit{};int i=lz*5+lx;localValid[i]=ray(movement,p,hit);
                     if(localValid[i]) localHeight[i]=toMc(hit).y;
                 }
@@ -246,9 +267,15 @@ class GameplayBridge {
         std::vector<unsigned char> bytes(sizeof(header)+blocks.size()*sizeof(proto::ColBlock));
         std::memcpy(bytes.data(),&header,sizeof(header));std::memcpy(bytes.data()+sizeof(header),blocks.data(),blocks.size()*sizeof(proto::ColBlock));
         memory.collision(proto::kColRegion,bytes.data(),bytes.size());
-        terrainIndex=(terrainIndex+1)%9;
     }
 public:
+    bool suppressNativeKey() noexcept {
+        if(exclusiveGate.load(std::memory_order_acquire)) {++suppressedNativeKeys;return true;}
+        return false;
+    }
+    void inputHooksReady(bool value) {nativeKeyHooks=value;}
+    void inputExclusive(bool value) {queuedInputMode.store(value?1:0);}
+    void observeNativeBomb(void* id,float strength,std::int64_t mask) {combat.observeNativeBomb(id,strength,mask);}
     void rawMouse(long x,long y) noexcept {if(requested.load()) {++rawPackets;rawX.fetch_add(std::clamp(x,-10000L,10000L));rawY.fetch_add(std::clamp(y,-10000L,10000L));}}
     void rawInputReady(bool value) {rawReady.store(value);}
     void look(float yaw,float pitch) {
@@ -265,7 +292,7 @@ public:
     void recover() {requested.store(true);recovery.store(true);}
     void hostTeleportBegin() {hostTeleporting.store(true);}
     void hostTeleportFinish() {hostTeleportSettleUntil.store(GetTickCount64()+750);hostTeleporting.store(false);recovery.store(true);}
-    void enable(bool value) {if(value&&!requested.exchange(true)) rejoin.store(true);else if(!value) requested.store(false);}
+    void enable(bool value) {if(value&&!requested.exchange(true)) rejoin.store(true);else if(!value) {requested.store(false);exclusiveGate.store(false);}}
     void capture() {std::lock_guard lock(mutex);captured=false;captureError.clear();}
     void shader(const std::string& name) {std::lock_guard lock(mutex);queuedShader=name;}
     void rendererProbe() {std::lock_guard lock(mutex);probeRequested=true;}
@@ -438,6 +465,7 @@ public:
         ~RingDrain() {owner->drain(at);if(hide) owner->renderer.visible(false);}
     };
     void tick(const BE_HostApiV1* host,void* character,void* movement,unity::V3 where,bool valid,bool living,bool cinematic) {
+        exclusiveGate.store(false,std::memory_order_release);
         std::lock_guard lock(mutex);
         try {
             inputMask.bind(host);
@@ -549,7 +577,8 @@ public:
                 memory.input({proto::kInReleaseAll,0,0,0,0});
             }
             lastMc=mc;guestReady=ready;
-            if(ready) inputMask.apply(character);else inputMask.release();
+            exclusiveGate.store(ready&&focus&&inputMode.exclusive(),std::memory_order_release);
+            if(ready&&inputMode.exclusive()) inputMask.apply(character);else inputMask.release();
             if(ready&&!characterHidden&&!hideFailed) setCharacterVisible(false);
             if(!ready&&characterHidden) setCharacterVisible(true);
             cursor(ready&&(mc.flags&proto::kMcScreenOpen)&&focus);
@@ -634,6 +663,8 @@ public:
             {"visual_model_hidden",nativeRenderHelper!=nullptr},
             {"native_animation_model_kept_active",visualModel!=nullptr&&visualModelWasActive},
             {"host_input_mask",inputMask.snapshot()},
+            {"mc_exclusive_hotkeys",inputMode.exclusive()},{"native_hotkeys_suppressed",exclusiveGate.load()},
+            {"native_keyboard_hooks",nativeKeyHooks},{"suppressed_native_key_queries",suppressedNativeKeys.load()},
             {"scroll_error",scrollError},
             {"pipeline_frames",pipelineFrames},{"pipeline_draw_commands",pipelineDraws},{"pipeline_error",pipelineError},
             {"frame_captured",captured&&captureError.empty()},{"capture_error",captureError},

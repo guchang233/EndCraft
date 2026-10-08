@@ -1,6 +1,6 @@
 # EndCraft：MC ×《明日方舟：终末地》联动原型
 
-当前版本 **2.0.0**，宿主模块 `endcraft.gameplay27`。真实终末地中显示 MC 角色、装备、方块、物品栏及实体；MC 负责移动、飞行、物品和攻击，宿主继续运行原场景、敌人及任务。MC 网格进入 HGRP 场景绘制，使用场景深度，在原版 UI 之前绘制。
+已发布版本 **2.0.0**，对应宿主模块 `endcraft.gameplay27`。当前开发修复为 `endcraft.gameplay29`，新增分号切换独占快捷键、坡面跟随、原生受击反馈与炸弹可命中物转交；本轮实机验收待完成，见 [第 29 版记录](docs/VALIDATION-gameplay29.md)。真实终末地中显示 MC 角色、装备、方块、物品栏及实体；MC 负责移动、飞行、物品和攻击，宿主继续运行原场景、敌人及任务。MC 网格进入 HGRP 场景绘制，使用场景深度，在原版 UI 之前绘制。
 
 2.0 修复原生传送与第三人称史蒂夫消失，支持剑、弓和 TNT 的 MC 伤害转交，以及创造模式宿主免伤。普通宿主生物可自动进入附近的船或载人矿车，座位和移动由 MC 管理；宿主本体随乘客位置更新，拆除载具时恢复原有控制。用户实机确认传送正常、史蒂夫可见、创造模式受击不掉血、TNT 击杀增加原生任务计数；诊断截图确认任务进度 11/26。实体渲染加入船、掉落物和箭。验收与限制见 [2.0 验证](docs/VALIDATION-gameplay27.md)、[2.0 说明](docs/RELEASE-2.0.0.md)。
 
@@ -10,7 +10,9 @@ MC 端来自 SkyCraft，独立运行于 `mc/run`，通过共享内存 `Local\End
 
 ## 当前安装与使用
 
-本机已注册并启用 `endcraft.gameplay27`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC；本次没有为验收该启动配置重启游戏。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
+本机已注册并启用开发修复 `endcraft.gameplay29`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
+
+按分号 `;` 切换 **MC 独占快捷键**，开关状态在 MC 画面提示；默认开启，关闭后原生快捷键可用。分号保留给此开关。TNT 炸开原生可破坏物需用原生炸弹命中一次来校准，校准仅保存在本机，游戏构建变化后重新采样；不破坏原生不可破坏的地表，也不生成 MC 石头矿石。
 
 桥接俯仰范围为 -90° 至 +90°，第三人称加入正常宿主射线避障。极端仰视时相机会靠近角色，按 F5 使用第一人称可获得清晰视野。
 
@@ -93,8 +95,8 @@ python tools/register-inspector.py inspect
 python tools/register-inspector.py actor
 python tools/register-inspector.py telemetry
 # 首次安装后注册当前玩法模块（每个身份仅一次）：
-python tools/register-inspector.py gameplay27
-python tools/configure-gameplay-startup.py --auto-start --module gameplay27
+python tools/register-inspector.py gameplay29
+python tools/configure-gameplay-startup.py --auto-start --module gameplay29
 python tools/runtime-report.py observe --module endcraft.telemetry --output reports/telemetry-start.json
 python tools/runtime-report.py status --module endcraft.telemetry --output reports/telemetry-status.json
 ```

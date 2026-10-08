@@ -62,6 +62,9 @@ public final class InputBridge {
 				}
 			}
 			case Proto.IN_RELEASE_ALL -> releaseAll();
+			case Proto.IN_INPUT_MODE -> minecraft.gui.hud.setOverlayMessage(
+				net.minecraft.network.chat.Component.literal(a != 0
+					? "MC 独占快捷键：开（; 切换）" : "MC 独占快捷键：关，原生快捷键已恢复（; 切换）"), false);
 			case Proto.IN_HURT -> hurt(minecraft, code, a / 100.0F, b, c);
 			case Proto.IN_OPEN_MENU -> {
 				if (minecraft.gui.screen() == null && minecraft.player != null) {

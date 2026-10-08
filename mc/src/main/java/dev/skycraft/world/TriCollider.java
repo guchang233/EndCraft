@@ -67,6 +67,12 @@ public final class TriCollider {
 			hitWall |= out[0] != x || out[1] != z;
 			x = out[0];
 			z = out[1];
+			// Follow a ramp at every horizontal substep. Testing only the final
+			// footprint could miss a sprint's total rise and let feet enter it.
+			if (wasOnGround && my <= 0) {
+				double support = floor(tris, x, y, z, true, step);
+				if (support > y) y = support;
+			}
 		}
 
 		// 2) Vertical.

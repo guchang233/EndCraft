@@ -56,6 +56,21 @@ class TriColliderTest {
 	}
 
 	@Test
+	void fastUphillMovementFollowsEachSubstepInsteadOfEnteringRamp() {
+		List<SkyTri> t = new ArrayList<>();
+		ramp(t, -2, 12, -3, 3, -2, 44);
+		double y = TriCollider.groundAt(t, 0, 2, 0, 0);
+		for (int i = 0; i < 8; i++) {
+			double x = i * .72;
+			double[] move = TriCollider.resolve(t, x, y, 0, R, H, STEP, true, .72, GRAVITY_TICK, 0);
+			y += move[1];
+			double ground = TriCollider.groundAt(t, x + move[0], y + 1, 0, 0);
+			assertTrue(y >= ground - 1e-5, "feet stay above the slope during a fast uphill tick");
+			assertEquals(.72, move[0], 1e-6);
+		}
+	}
+
+	@Test
 	void wideBoatRecoversWhenStreamedGroundReplacesCoarseSupport() {
 		List<SkyTri> t = new ArrayList<>();
 		flat(t, -8, -8, 8, 8, .82093048);
