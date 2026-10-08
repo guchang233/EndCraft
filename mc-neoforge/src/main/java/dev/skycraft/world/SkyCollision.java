@@ -48,6 +48,9 @@ public final class SkyCollision {
 	private static volatile java.util.function.Predicate<net.minecraft.world.entity.Entity> smoothCollider = e -> false;
 	private static final Set<Long> KNOWN_REGIONS = ConcurrentHashMap.newKeySet();
 	private static volatile int epoch = -1;
+	// Physics engines with their own static terrain (Sable) mirror the voxels: bounds of a changed
+	// region as {minX, minY, minZ, maxX, maxY, maxZ}, or null when everything was cleared.
+	private static final java.util.List<java.util.function.Consumer<int[]>> VOXEL_LISTENERS = new java.util.concurrent.CopyOnWriteArrayList<>();
 	private static Thread consumer;
 
 	private SkyCollision() {
@@ -55,6 +58,15 @@ public final class SkyCollision {
 
 	public static @Nullable VoxelShape shapeAt(BlockPos pos) {
 		return SHAPES.isEmpty() ? null : SHAPES.get(pos.asLong());
+	}
+
+	public static @Nullable VoxelShape shapeAt(int x, int y, int z) {
+		return SHAPES.isEmpty() ? null : SHAPES.get(BlockPos.asLong(x, y, z));
+	}
+
+	/** Called on the collision thread after the stored voxels change; see VOXEL_LISTENERS. */
+	public static void addVoxelListener(java.util.function.Consumer<int[]> listener) {
+		VOXEL_LISTENERS.add(listener);
 	}
 
 	/** Entities (the local player) that collide with Skyrim's exact triangles instead of its voxels. */
@@ -276,6 +288,7 @@ public final class SkyCollision {
 		TRI_HASH.clear();
 		KNOWN_REGIONS.clear();
 		epoch = newEpoch;
+		for (var listener : VOXEL_LISTENERS) listener.accept(null);
 		SkyCraft.LOG.info("SkyCraft: collision cleared (epoch {})", newEpoch);
 	}
 
@@ -332,6 +345,7 @@ public final class SkyCollision {
 				}
 			}
 		}
+		for (var listener : VOXEL_LISTENERS) listener.accept(new int[] {minX, minY, minZ, maxX, maxY, maxZ});
 	}
 
 	private static void readTris(MemorySegment s, long p) {

@@ -16,6 +16,7 @@
     "PressurePlateMixin",
     "ProjectileMixin",
     "ProjectileUtilMixin",
+    "SableTerrainMixin",
     "ServerExplosionMixin",
     "ServerPlayerMixin",
     "VehicleDismountMixin"

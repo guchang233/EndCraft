@@ -2,7 +2,7 @@ param([ValidateSet('status','third_person','test_block','stop')][string]$Operati
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskJdk='C:\Users\sow\AppData\Roaming\.minecraft\runtime\java-runtime-epsilon\bin'
-$taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object { $_.CommandLine.Contains((Join-Path $GuestRoot 'mc')) -and $_.CommandLine.Contains('net.fabricmc.devlaunchinjector.Main') })
+$taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains((Join-Path $GuestRoot 'mc')) -and $_.CommandLine.Contains('net.fabricmc.devlaunchinjector.Main') })
 if($taskClients.Count -ne 1) {throw 'Exactly one project-owned MC development client required.'}
 $taskAgentRoot=Join-Path $taskRoot 'build\debug-agent'
 New-Item -ItemType Directory -Force -Path $taskAgentRoot | Out-Null

@@ -30,12 +30,10 @@ public final class SkyCraft {
 
     public SkyCraft(IEventBus modBus, ModContainer container) {
         modBus.addListener((RegisterEvent e) -> {
-            e.register(Registries.ENTITY_TYPE, helper -> helper.register(SkyCombat.SKYRIM_ACTOR_KEY.location(), SkyCombat.SKYRIM_ACTOR));
             e.register(NeoForgeRegistries.Keys.ATTACHMENT_TYPES, helper -> helper.register(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(MOD_ID, "dug"), SkyDig.DUG));
         });
         modBus.addListener(dev.skycraft.net.SkyNet::register);
-        dev.skycraft.platform.EntityAttributes.initialize(modBus);
-        SkyCombat.init();
+        SkyCombat.init(modBus);
         NeoForge.EVENT_BUS.addListener((ServerStartedEvent e) -> configureServer(e.getServer()));
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent e) -> {
             if (e.getEntity() instanceof ServerPlayer p && p.server.getWorldData().getLevelName().equals(WORLD_NAME)) {

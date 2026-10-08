@@ -19,6 +19,6 @@ public abstract class ItemMixin {
 	)
 	private static BlockHitResult skycraft$povSkyrim(Level level, ClipContext context, Operation<BlockHitResult> original) {
 		// These items act on hitPos.relative(face), so report the cell the surface is in.
-		return SkyClip.refine(context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
+		return SkyClip.refine(level, context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
 	}
 }

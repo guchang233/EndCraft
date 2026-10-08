@@ -18,6 +18,6 @@ public abstract class ProjectileUtilMixin {
 		at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;clip(Lnet/minecraft/world/level/ClipContext;)Lnet/minecraft/world/phys/BlockHitResult;")
 	)
 	private static BlockHitResult skycraft$hitSkyrim(Level level, ClipContext context, Operation<BlockHitResult> original) {
-		return SkyClip.refine(context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
+		return SkyClip.refine(level, context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
 	}
 }

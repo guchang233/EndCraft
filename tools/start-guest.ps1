@@ -24,6 +24,8 @@ try {
         }
         throw 'Another EndCraft guest is running. Preserve it and avoid two writers to shared memory.'
     }
+    . (Join-Path $PSScriptRoot 'guest-process.ps1')
+    if (Test-EndCraftGuestRunning) {throw 'An EndCraft guest already owns the bridge (possibly elevated). Save and quit it normally before switching.'}
     New-Item -ItemType Directory -Path (Split-Path -Parent $taskLog) -Force | Out-Null
     # Reuse a complete versioned asset cache; avoid revalidating all assets online on every launch.
     $taskProperties=[IO.File]::ReadAllText((Join-Path $taskRoot 'mc\gradle.properties'))

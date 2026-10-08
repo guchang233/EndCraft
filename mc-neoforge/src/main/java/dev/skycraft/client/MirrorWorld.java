@@ -125,6 +125,14 @@ public final class MirrorWorld {
 			minecraft.setScreen(new TitleScreen());
 			return;
 		}
+		// Create/Sable worldgen marks the mirror world experimental, so 1.21.1 asks about a backup on
+		// every open. The window is hidden while linked; nobody can answer, so continue without one.
+		if (attempted && minecraft.level == null && sessionJoin == null
+			&& minecraft.screen instanceof net.minecraft.client.gui.screens.BackupConfirmScreen backup) {
+			SkyCraft.LOG.info("SkyCraft: confirming the experimental-settings prompt for the mirror world");
+			((dev.skycraft.client.mixin.BackupConfirmAccess) backup).endcraft$onProceed().proceed(false, false);
+			return;
+		}
 		if (attempted && minecraft.level == null && minecraft.screen != null && System.currentTimeMillis() - lastLog > 5000) {
 			lastLog = System.currentTimeMillis();
 			SkyCraft.LOG.info("SkyCraft: still not in the mirror world; current screen {}", minecraft.screen.getClass().getName());

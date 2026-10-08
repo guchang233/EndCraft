@@ -47,7 +47,7 @@ class MixinTargetTest {
                 if (entry.isDirectory()) continue;
                 String name = entry.getName();
                 if (name.endsWith(".jar") && name.startsWith("META-INF/jarjar/")) readOptional(zip.readAllBytes());
-                else if (name.endsWith(".class") && (name.startsWith("dev/engine_room/") || name.startsWith("dev/ryanhcode/")))
+                else if (name.endsWith(".class") && (name.startsWith("dev/engine_room/") || name.startsWith("dev/ryanhcode/") || name.startsWith("foundry/veil/")))
                     optional.put(name.substring(0, name.length() - 6), zip.readAllBytes());
             }
         }
@@ -71,6 +71,8 @@ class MixinTargetTest {
                 if (mv.containsKey("targets")) for (var type : list(mv.get("targets"))) targets.add(type.toString().replace('.', '/'));
                 for (var nameTarget : targets) {
                     var cls = target(nameTarget);
+                    if ((cls.access & Opcodes.ACC_INTERFACE) != 0)
+                        assertTrue((mixin.access & Opcodes.ACC_INTERFACE) != 0, id + " interface target requires an interface mixin");
                     for (var handler : mixin.methods) for (var annotation : annotations(handler.visibleAnnotations, handler.invisibleAnnotations)) {
                         var v = values(annotation);
                         boolean invoker = annotation.desc.endsWith("/Invoker;");
@@ -84,6 +86,16 @@ class MixinTargetTest {
                             for (var method : methods) {
                                 assertEquals((method.access & Opcodes.ACC_STATIC) != 0, (handler.access & Opcodes.ACC_STATIC) != 0, id + " static mismatch " + selector);
                                 if (invoker) { assertEquals(method.desc, handler.desc, id + " invoker descriptor"); continue; }
+                                if (annotation.desc.endsWith("/Inject;")) {
+                                    var args = Type.getArgumentTypes(handler.desc);
+                                    var originalArgs = Type.getArgumentTypes(method.desc);
+                                    String callback = Type.getReturnType(method.desc).equals(Type.VOID_TYPE)
+                                        ? "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;"
+                                        : "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
+                                    assertTrue(args.length == 1 || args.length == originalArgs.length + 1, id + " handler argument count");
+                                    assertEquals(callback, args[args.length - 1].getDescriptor(), id + " callback descriptor");
+                                    if (args.length > 1) assertArrayEquals(originalArgs, Arrays.copyOf(args, args.length - 1), id + " handler arguments");
+                                }
                                 Object ats = v.get("at");
                                 for (var atValue : list(ats)) {
                                     var at = values((AnnotationNode) atValue);
@@ -91,7 +103,17 @@ class MixinTargetTest {
                                     String signature = at.get("target").toString();
                                     boolean found = false;
                                     for (var instruction : method.instructions) if (instruction instanceof MethodInsnNode call) {
-                                        if (signature.equals("L" + call.owner + ";" + call.name + call.desc)) found = true;
+                                        if (signature.equals("L" + call.owner + ";" + call.name + call.desc)) {
+                                            found = true;
+                                            if (annotation.desc.endsWith("/WrapOperation;")) {
+                                                List<Type> expected = new ArrayList<>();
+                                                if (call.getOpcode() != Opcodes.INVOKESTATIC) expected.add(Type.getObjectType(call.owner));
+                                                expected.addAll(Arrays.asList(Type.getArgumentTypes(call.desc)));
+                                                expected.add(Type.getObjectType("com/llamalad7/mixinextras/injector/wrapoperation/Operation"));
+                                                assertArrayEquals(expected.toArray(Type[]::new), Type.getArgumentTypes(handler.desc), id + " wrapper arguments");
+                                                assertEquals(Type.getReturnType(call.desc), Type.getReturnType(handler.desc), id + " wrapper return");
+                                            }
+                                        }
                                     }
                                     assertTrue(found, id + " missing call in " + selector + ": " + signature);
                                 }

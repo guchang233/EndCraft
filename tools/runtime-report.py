@@ -9,6 +9,10 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 INDEX=Path(os.environ['LOCALAPPDATA'])/'BetterEndfield/third-party/index.json'
+if not INDEX.is_file():
+    # Store Python can virtualize LocalAppData; the installed host keeps the same
+    # authenticated module index in the project runtime directory.
+    INDEX=ROOT/'.tools/framework/third-party/index.json'
 
 def collect(action,output,module='endcraft.probe',request_body=None):
     index=json.loads(INDEX.read_text(encoding='utf-8-sig'))

@@ -66,5 +66,30 @@
     ],
     "license_url": "https://github.com/ryanhcode/sable/blob/main/LICENSE.md",
     "source_url": "https://github.com/ryanhcode/sable"
+  },
+  {
+    "project": "create-flight-control",
+    "project_id": "IGVrnkhH",
+    "version_id": "act82pgK",
+    "version": "0.7.7",
+    "filename": "create_flight_control-neoforge-0.7.7.jar",
+    "url": "https://cdn.modrinth.com/data/IGVrnkhH/versions/act82pgK/create_flight_control-neoforge-0.7.7.jar",
+    "sha512": "31b430b7977cf9fe3192a82b44f72c22d1e379702c93319abbb4901aede9ae79202d830ba2d4c346524d6f07c8f4c469ae8a1c3523a467e994e05a70a8de43ea",
+    "dependencies": [
+      {
+        "version_id": null,
+        "project_id": "LNytGWDc",
+        "file_name": null,
+        "dependency_type": "required"
+      },
+      {
+        "version_id": null,
+        "project_id": "T9PomCSv",
+        "file_name": null,
+        "dependency_type": "required"
+      }
+    ],
+    "license_url": "https://modrinth.com/mod/create-flight-control",
+    "source_url": "https://modrinth.com/mod/create-flight-control"
   }
 ]

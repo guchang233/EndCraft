@@ -2,11 +2,20 @@
 
 在《明日方舟：终末地》的真实场景中，使用 Minecraft 的角色、物品栏、建造与战斗机制。
 
-**当前版本：3.0.0 · 实验性联动原型 · Windows x64。** Minecraft 与终末地同时运行；MC 模拟玩法，宿主插件把角色、方块和实体绘制到终末地场景中。
+**当前版本：4.0.0 · 实验性联动原型 · Windows x64。** Minecraft 与终末地同时运行；MC 模拟玩法，宿主插件把角色、方块和实体绘制到终末地场景中。
 
-[下载 3.0](https://github.com/guchang233/EndCraft/releases/tag/v3.0.0) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
+[4.0 更新说明](docs/RELEASE-4.0.0.md) · [发行版本](https://github.com/guchang233/EndCraft/releases) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
 
-另有独立的 [NeoForge 1.21.1／机械动力航空学实验工程](docs/NEOFORGE.md)：已构建并通过非游戏测试，尚未启动游戏验收；现有 3.0 Fabric 实例保留。
+## 4.0 新增：机械动力与航空学
+
+4.0 提供两个可选的 MC 客户端，共用同一个宿主模块：
+
+| 客户端 | 版本 | 适用 |
+|---|---|---|
+| Fabric（`mc/`） | MC 26.3 | 原有玩法，功能与 3.0 一致 |
+| NeoForge（`mc-neoforge/`） | MC 1.21.1 | 机械动力 6.0.10、机械动力航空学 1.3.2（Sable 2.0.6）、Create: Flight Control 0.7.7 |
+
+NeoForge 客户端能在终末地场景里搭建机械动力装置和航空学船体：船体随 Sable 物理移动并绘制到原生场景，物理杖和左键可正常选中船体，船体可与终末地地形碰撞（落地、滑行待验收）。首轮实机测试修复了黑屏、不自动进图、船体选不中、方块互相穿插和放置方块消失等问题，详见 [4.0 更新说明](docs/RELEASE-4.0.0.md) 与 [NeoForge 说明](docs/NEOFORGE.md)。
 
 ## 能做什么
 
@@ -18,9 +27,10 @@
 | 战斗 | 保留 MC 武器冷却、暴击、弓和 TNT 的伤害计算，转交宿主伤害与受击组件 |
 | 游戏模式 | `/gamemode` 切换；创造／旁观模式同步宿主免伤 |
 | 实体 | 显示船、矿车、箭、掉落物等；普通体型宿主生物可进入附近载具，覆盖范围有限 |
-| 恢复 | 原生传送后的角色同步、死亡恢复、存档锚点保留及重新连接 |
+| 恢复 | 原生传送后的角色同步、死亡恢复、存档锚点保留及重新连接；终末地切换场景后自动重发方块网格 |
+| 机械动力／航空学 | 仅 NeoForge 客户端：Create 装置、Sable 船体显示与选取、船体对终末地地形的碰撞（实验） |
 
-3.0 主要修复玻璃和流体渲染、高速上坡跟随、保存退出死锁，以及热更新／启动时的坐标锚点。原生受击状态变化已有实测。见 [3.0 更新说明](docs/RELEASE-3.0.0.md) 与 [验证记录](docs/VALIDATION-gameplay33.md)。
+Fabric 客户端的玻璃和流体渲染、高速上坡跟随、保存退出与坐标锚点修复来自 3.0，见 [3.0 更新说明](docs/RELEASE-3.0.0.md) 与 [验证记录](docs/VALIDATION-gameplay33.md)。
 
 ## 开始使用
 
@@ -30,6 +40,16 @@
 2. 构建并安装加载器／Host，注册 `endcraft.gameplay33`，配置启动。
 3. 通过原启动器进入终末地可移动场景，等待项目 MC 连接和物品栏出现。
 4. 先用玻璃、水和少量方块测试，再按 [操作教程](docs/USER-GUIDE.md) 体验飞行、战斗和载具。
+
+使用 NeoForge 客户端（机械动力／航空学）时，第 2 步之后改为：
+
+```powershell
+python tools/fetch-neoforge-mods.py      # 下载并校验固定版本的模组
+.\tools\build-neoforge.ps1               # 构建与非游戏测试
+.\tools\start-neoforge.ps1 -BridgeHost   # 终末地运行后启动并连接
+```
+
+两个客户端不能同时连接；切换前先正常保存退出另一个。完整步骤与回退见 [NeoForge 说明](docs/NEOFORGE.md)。
 
 已有本项目 2.0 安装的用户，按教程中的 [升级步骤](docs/INSTALL.md#从本项目-20-升级) 操作；保留存档及旧坐标锚点，只开启一个玩法模块。
 
@@ -55,6 +75,8 @@
 - TNT 的 MC 方块破坏、敌人伤害和任务击杀已有实测；**炸原生岩石仍待真实炸弹样本校准与验收**。
 - 战斗奖励、重新登录后的状态持久性、所有 NPC 类型及跨全新地图建筑锚定未全面验证。
 - MC 光影包尚未兼容。透明面复杂相交、水下效果及水面反射／折射仍需后续验证。
+- NeoForge 客户端：航空学船体在终末地地面的起降与滑行、移动船体的宿主碰撞体（NPC 阻挡、登船）、Create: Flight Control 飞控方块尚未完成验收。
+- 1.21.1 与 26.3 的存档互不兼容，两个客户端的建筑和库存相互独立。
 - 当前实机结论来自开发机；不能据此保证所有游戏构建、显卡或其他模组组合可用。
 
 ## 文档与开发
@@ -65,12 +87,14 @@
 | [操作教程](docs/USER-GUIDE.md) | 建造、玻璃／水、鞘翅、游戏模式、战斗、载具和传送 |
 | [故障排查](docs/TROUBLESHOOTING.md) | 无 HUD、角色消失、卡地形、输入冲突、诊断与回退 |
 | [实现原理](docs/ARCHITECTURE.md) | 双进程通信、坐标、绘制、碰撞、战斗及光影路线 |
-| [3.0 更新说明](docs/RELEASE-3.0.0.md) | 发行内容、验证结果和未完成项 |
+| [4.0 更新说明](docs/RELEASE-4.0.0.md) | NeoForge 客户端、机械动力／航空学适配及修复 |
+| [NeoForge 说明](docs/NEOFORGE.md) | 1.21.1 客户端构建、启动、切换、诊断与待验收项 |
+| [3.0 更新说明](docs/RELEASE-3.0.0.md) | Fabric 客户端发行内容、验证结果和未完成项 |
 
-开发版本使用 Minecraft **26.3**、Fabric Loader **0.19.5**、Fabric API **0.161.0+26.3**、JDK **25**；宿主模块为 `endcraft.gameplay33`，共享内存协议为 **12**。
+Fabric 客户端使用 Minecraft **26.3**、Fabric Loader **0.19.5**、Fabric API **0.161.0+26.3**；NeoForge 客户端使用 Minecraft **1.21.1**、NeoForge **21.1.247**。两者均用 JDK **25**，宿主模块为 `endcraft.gameplay33`，共享内存协议为 **12**。
 
 ## 许可与来源
 
-MC 端改编自 [SkyCraft](https://github.com/chasmlol/SkyCraft)，使用 MIT 许可；宿主接入基于 [Better-Endfield](https://github.com/Dr-hydra/Better-Endfield)，使用 AGPL-3.0。原许可声明保留，详见 [LICENSE](LICENSE)、[mc/LICENSE](mc/LICENSE) 与 [第三方声明](THIRD-PARTY-NOTICES.md)。
+MC 端改编自 [SkyCraft](https://github.com/chasmlol/SkyCraft)，使用 MIT 许可；NeoForge 客户端依赖的 Create、Aeronautics、Sable 与 Create: Flight Control 由脚本从发布方下载，不随仓库分发，各自遵循原许可；宿主接入基于 [Better-Endfield](https://github.com/Dr-hydra/Better-Endfield)，使用 AGPL-3.0。原许可声明保留，详见 [LICENSE](LICENSE)、[mc/LICENSE](mc/LICENSE) 与 [第三方声明](THIRD-PARTY-NOTICES.md)。
 
 发行附件不含游戏文件、账号凭据、存档、运行日志或含 UID 的截图。上游源码固定提交随完整源码附件提供。

@@ -26,11 +26,30 @@ final class CaptureBuffers implements MultiBufferSource {
         ResourceLocation location = textureLocation(type);
         if (location == null || type.mode() != com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS) return discarded;
         int id = TextureExporter.texture(location); if (id < 0) return discarded;
-        boolean blended = type.toString().contains("translucent") || type.toString().contains("alpha") || type.toString().contains("text");
+        boolean blended = blended(type);
         var key = new Key(id, blended);
         if (!batches.containsKey(key) && batches.size() >= 64) return discarded;
         var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
         mesh.finish(); mesh.transform = transform; mesh.flags = 8 | (blended ? 2 : 1); return mesh;
+    }
+    private static final Map<RenderType, Boolean> BLENDED = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Blended batches are drawn without depth writes, so only types that really blend may be marked.
+     * Decided by the type's transparency shard (every description names its texture, so text
+     * matching on "text" or "alpha" marks solid blocks blended and breaks occlusion).
+     */
+    static boolean blended(RenderType type) {
+        return BLENDED.computeIfAbsent(type, t -> {
+            Object shard = compositeShard(t, "transparencyState");
+            String name = shard != null ? shard.toString() : t.toString();
+            return shard != null ? !name.equals("no_transparency") : !name.contains("no_transparency");
+        });
+    }
+    private static Object compositeShard(RenderType type, String field) {
+        try {
+            Field state = type.getClass().getDeclaredField("state"); state.setAccessible(true); Object composite = state.get(type);
+            Field shard = composite.getClass().getDeclaredField(field); shard.setAccessible(true); return shard.get(composite);
+        } catch (ReflectiveOperationException | RuntimeException e) { return null; }
     }
     /** CompositeRenderType is package private; inspect its documented Mojang state, never GPU internals. */
     private static ResourceLocation textureLocation(RenderType type) {

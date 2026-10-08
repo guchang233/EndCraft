@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import dev.skycraft.platform.ServerTickEvents;
-import dev.skycraft.platform.EntityAttributes;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -39,8 +38,11 @@ import org.jspecify.annotations.Nullable;
 public final class SkyCombat {
 	public static final ResourceKey<EntityType<?>> SKYRIM_ACTOR_KEY =
 		ResourceKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "skyrim_actor"));
-    public static final EntityType<SkyrimActorEntity> SKYRIM_ACTOR = EntityType.Builder.<SkyrimActorEntity>of(SkyrimActorEntity::new, MobCategory.MISC)
-        .sized(0.6F, 1.8F).noSave().noSummon().clientTrackingRange(10).updateInterval(1).build("skycraft:skyrim_actor");
+    private static final net.neoforged.neoforge.registries.DeferredRegister<EntityType<?>> ENTITIES =
+        net.neoforged.neoforge.registries.DeferredRegister.create(Registries.ENTITY_TYPE, SkyCraft.MOD_ID);
+    public static final net.neoforged.neoforge.registries.DeferredHolder<EntityType<?>, EntityType<SkyrimActorEntity>> SKYRIM_ACTOR =
+        ENTITIES.register("skyrim_actor", () -> EntityType.Builder.<SkyrimActorEntity>of(SkyrimActorEntity::new, MobCategory.MISC)
+            .sized(0.6F, 1.8F).noSave().noSummon().clientTrackingRange(10).updateInterval(1).build("skycraft:skyrim_actor"));
 
 	/** Skyrim damage is divided by this for Minecraft (a 15-damage bandit swing = 3 = 1.5 hearts). */
 	public static final float SKYRIM_TO_MC_DAMAGE = 5.0F;
@@ -51,8 +53,10 @@ public final class SkyCombat {
 	private SkyCombat() {
 	}
 
-	public static void init() {
-		EntityAttributes.register(SKYRIM_ACTOR, LivingEntity.createLivingAttributes());
+	public static void init(net.neoforged.bus.api.IEventBus modBus) {
+        ENTITIES.register(modBus);
+        modBus.addListener((net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent e) ->
+            e.put(SKYRIM_ACTOR.get(), LivingEntity.createLivingAttributes().build()));
 		ServerTickEvents.END_SERVER_TICK.register(SkyCombat::serverTick);
 	}
 
@@ -105,7 +109,7 @@ public final class SkyCombat {
 		for (SkyLink.Actor a : live.values()) {
 			SkyrimActorEntity proxy = PROXIES.get(a.formId());
 			if (proxy == null) {
-				proxy = new SkyrimActorEntity(SKYRIM_ACTOR, level);
+				proxy = new SkyrimActorEntity(SKYRIM_ACTOR.get(), level);
 				proxy.setFormId(a.formId());
 				proxy.setSize(a.width(), a.height());
 				proxy.moveTo(a.x(), a.y(), a.z(), a.yaw(), 0.0F);

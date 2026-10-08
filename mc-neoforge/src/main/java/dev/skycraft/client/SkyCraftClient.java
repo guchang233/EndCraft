@@ -11,7 +11,7 @@ import net.neoforged.neoforge.common.NeoForge;
 public final class SkyCraftClient {
     public static void initialize(IEventBus modBus) {
         dev.skycraft.link.SkyLink.announceRunning();
-        modBus.addListener((EntityRenderersEvent.RegisterRenderers e) -> e.registerEntityRenderer(SkyCombat.SKYRIM_ACTOR, NoopRenderer::new));
+        modBus.addListener((EntityRenderersEvent.RegisterRenderers e) -> e.registerEntityRenderer(SkyCombat.SKYRIM_ACTOR.get(), NoopRenderer::new));
         NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post e) -> {
             SkyClient.clientTick(Minecraft.getInstance());
             ProbeTelemetry.tick(Minecraft.getInstance());

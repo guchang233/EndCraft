@@ -14,6 +14,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ClientLevelDigMixin {
 	@Inject(method = "setBlocksDirty", at = @At("HEAD"))
 	private void skycraft$blockChanged(BlockPos pos, BlockState oldState, BlockState newState, CallbackInfo ci) {
-		dev.skycraft.client.render.WorldExporter.markDirtyNow(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4);
+		SkyDigClient.blockChanged((net.minecraft.client.multiplayer.ClientLevel) (Object) this, pos, oldState, newState);
 	}
 }

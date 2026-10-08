@@ -27,4 +27,17 @@ public abstract class LevelRendererMixin {
 			ci.cancel();
 		}
 	}
+
+	/**
+	 * Every block change (with the neighbouring sections whose faces it culls), chunk load and light
+	 * update marks its 16^3 section for re-meshing into the host, as vanilla does for its own meshes.
+	 */
+	@Inject(method = "setSectionDirty(IIIZ)V", at = @At("HEAD"))
+	private void skycraft$sectionDirty(int sectionX, int sectionY, int sectionZ, boolean playerChanged, CallbackInfo ci) {
+		if (playerChanged) {
+			dev.skycraft.client.render.WorldExporter.markDirtyNow(sectionX, sectionY, sectionZ);
+		} else {
+			dev.skycraft.client.render.WorldExporter.markDirty(sectionX, sectionY, sectionZ);
+		}
+	}
 }

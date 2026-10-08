@@ -26,13 +26,15 @@ public final class SkyClip {
 
 	private static final ThreadLocal<List<SkyTri>> SCRATCH = ThreadLocal.withInitial(ArrayList::new);
 
-	public static BlockHitResult refine(Vec3 from, Vec3 to, BlockHitResult vanilla, Use use) {
+	public static BlockHitResult refine(net.minecraft.world.level.BlockGetter level, Vec3 from, Vec3 to, BlockHitResult vanilla, Use use) {
 		SkyRay.Hit hit = cast(from, to);
+		// Sable reports hits on a ship at its plot position, millions of blocks away; compare in world space.
+		Vec3 vanillaAt = vanilla.getType() == HitResult.Type.MISS ? vanilla.getLocation() : worldPosition(level, vanilla.getLocation());
 		if (use == Use.PICK) {
 			// The walls of a dug hole (Skyrim ground the crosshair meets from inside the hole).
 			double limit = hit != null ? hit.t() : 1.0;
 			if (vanilla.getType() != HitResult.Type.MISS) {
-				limit = Math.min(limit, Math.sqrt(from.distanceToSqr(vanilla.getLocation()) / Math.max(from.distanceToSqr(to), 1e-9)));
+				limit = Math.min(limit, Math.sqrt(from.distanceToSqr(vanillaAt) / Math.max(from.distanceToSqr(to), 1e-9)));
 			}
 			SkyRay.Hit wall = digWall(from, to, limit);
 			if (wall != null) {
@@ -44,12 +46,41 @@ public final class SkyClip {
 			return vanilla;
 		}
 		Vec3 location = new Vec3(hit.x(), hit.y(), hit.z());
-		if (vanilla.getType() != HitResult.Type.MISS && from.distanceToSqr(vanilla.getLocation()) <= from.distanceToSqr(location)) {
+		if (vanilla.getType() != HitResult.Type.MISS && from.distanceToSqr(vanillaAt) <= from.distanceToSqr(location)) {
 			return vanilla;
 		}
 		Direction face = Direction.values()[SkyRay.dominantFace(hit.nx(), hit.ny(), hit.nz())];
 		int[] cell = use == Use.PICK ? SkyRay.placementCell(hit) : SkyRay.surfaceCell(hit);
 		return new SkyrimHitResult(location, face, new BlockPos(cell[0], cell[1], cell[2]), hit);
+	}
+
+	private static java.lang.reflect.Method projectOut;
+	private static Object sableCompanion;
+	private static boolean sableResolved;
+
+	/** A position inside a Sable ship's plot, moved to where the ship is in the world; others unchanged. */
+	static Vec3 worldPosition(net.minecraft.world.level.BlockGetter level, Vec3 position) {
+		if (!(level instanceof net.minecraft.world.level.Level world)) {
+			return position;
+		}
+		if (!sableResolved) {
+			sableResolved = true;
+			try {
+				Class<?> companion = Class.forName("dev.ryanhcode.sable.companion.SableCompanion", true, SkyClip.class.getClassLoader());
+				sableCompanion = companion.getField("INSTANCE").get(null);
+				projectOut = companion.getMethod("projectOutOfSubLevel", net.minecraft.world.level.Level.class, Vec3.class);
+			} catch (ReflectiveOperationException | LinkageError e) {
+				projectOut = null; // Sable not installed: every hit is already in world space
+			}
+		}
+		if (projectOut == null) {
+			return position;
+		}
+		try {
+			return (Vec3) projectOut.invoke(sableCompanion, world, position);
+		} catch (ReflectiveOperationException e) {
+			return position;
+		}
 	}
 
 	private static final SkyTri STONE_WALL = new SkyTri(new float[9], 0, dev.skycraft.link.Proto.TRI_DIGGABLE | (dev.skycraft.link.Proto.DIG_STONE << dev.skycraft.link.Proto.TRI_MATERIAL_SHIFT));

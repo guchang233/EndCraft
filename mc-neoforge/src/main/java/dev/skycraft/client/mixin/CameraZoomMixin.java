@@ -21,6 +21,6 @@ public abstract class CameraZoomMixin {
 		at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/BlockGetter;clip(Lnet/minecraft/world/level/ClipContext;)Lnet/minecraft/world/phys/BlockHitResult;")
 	)
 	private BlockHitResult skycraft$zoomAgainstSkyrim(BlockGetter level, ClipContext context, Operation<BlockHitResult> original) {
-		return SkyClip.refine(context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
+		return SkyClip.refine(level, context.getFrom(), context.getTo(), original.call(level, context), SkyClip.Use.PROJECTILE);
 	}
 }

@@ -3,8 +3,10 @@
   "package": "dev.skycraft.client.mixin",
   "compatibilityLevel": "JAVA_22",
   "client": [
+    "BackupConfirmAccess",
     "CameraZoomMixin",
     "ClientLevelDigMixin",
+    "GuiVignetteMixin",
     "InputConstantsMixin",
     "KeyboardAccess",
     "MouseAccess",
@@ -12,7 +14,8 @@
     "MinecraftMixin",
     "ScreenMixin",
     "FlywheelFallbackMixin",
-    "TextureAtlasReloadMixin"
+    "TextureAtlasReloadMixin",
+    "VeilPostMixin"
   ],
   "injectors": {
     "defaultRequire": 1
