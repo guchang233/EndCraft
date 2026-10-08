@@ -25,7 +25,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          # NeoForge's moddev creates the 1.21.1 artifacts with a Java 21 toolchain;
+          # the last version listed (25) stays the default JAVA_HOME.
+          java-version: |
+            21
+            25
 
       - uses: actions/setup-python@v5
         with:
