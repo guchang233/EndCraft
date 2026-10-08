@@ -58,8 +58,10 @@ def main():
     with zipfile.ZipFile(module_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(dll, f'native/windows-x64/{module}.dll')
         archive.writestr('module.json', json.dumps(manifest, indent=2))
-        for name in ('LICENSE', 'THIRD-PARTY-NOTICES.md', f'docs/RELEASE-{version}.md'):
+        for name in ('README.md', 'VERSION', 'LICENSE', 'mc/LICENSE', 'THIRD-PARTY-NOTICES.md'):
             archive.write(ROOT / name, name)
+        for path in sorted((ROOT / 'docs').glob('*.md')):
+            archive.write(path, path.relative_to(ROOT).as_posix())
     shutil.copy2(jar, output / jar.name)
     source_zip = output / f'EndCraft-{version}-source.zip'
     archive_source(source_zip, version)

@@ -1,15 +1,17 @@
+param([string]$JavaHome = $(if ($env:ENDCRAFT_JAVA_HOME) { $env:ENDCRAFT_JAVA_HOME } else { Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon' }))
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskLog=Join-Path $taskRoot 'reports\guest-startup.log'
 try {
-    $taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {$_.CommandLine.Contains('net.fabricmc.devlaunchinjector.Main') -and $_.CommandLine.Contains('MC x ENDFIELD')})
+    $taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {$_.CommandLine -and $_.CommandLine.Contains('net.fabricmc.devlaunchinjector.Main') -and ($_.CommandLine.Contains((Join-Path $taskRoot 'mc')) -or $_.CommandLine.Contains('-Dskycraft.startHidden=true'))})
     if($taskClients.Count) {
         if($taskClients.Count -eq 1 -and $taskClients[0].CommandLine.Contains((Join-Path $taskRoot 'mc'))) {
-            'Project guest is already running.' | Set-Content -LiteralPath $taskLog
+            Write-Output 'Project guest is already running.'
             exit 0
         }
         throw 'Another EndCraft guest is running. Preserve it and avoid two writers to shared memory.'
     }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $taskLog) -Force | Out-Null
     # Reuse a complete versioned asset cache; avoid revalidating all assets online on every launch.
     $taskProperties=[IO.File]::ReadAllText((Join-Path $taskRoot 'mc\gradle.properties'))
     $taskVersion=[regex]::Match($taskProperties,'(?m)^minecraft_version=(.+)$').Groups[1].Value.Trim()
@@ -27,12 +29,12 @@ try {
         }
     }
     if($taskAssetsReady) {
-        & (Join-Path $PSScriptRoot 'build-mc.ps1') -Run -Offline -SkipAssets *> $taskLog
+        & (Join-Path $PSScriptRoot 'build-mc.ps1') -Run -Offline -SkipAssets -JavaHome $JavaHome *> $taskLog
     } else {
-        & (Join-Path $PSScriptRoot 'build-mc.ps1') -Run *> $taskLog
+        & (Join-Path $PSScriptRoot 'build-mc.ps1') -Run -JavaHome $JavaHome *> $taskLog
     }
     if($LASTEXITCODE) {throw "Guest exited with code $LASTEXITCODE"}
 } catch {
-    $_.Exception.Message | Add-Content -LiteralPath $taskLog
+    try { $_.Exception.Message | Add-Content -LiteralPath $taskLog } catch { [Console]::Error.WriteLine('Guest startup failed; the existing startup log is in use. Read the original launch output.') }
     exit 1
 }

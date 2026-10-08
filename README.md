@@ -1,129 +1,74 @@
-# EndCraft：MC ×《明日方舟：终末地》联动原型
+# EndCraft
 
-已发布版本 **2.0.0**，对应宿主模块 `endcraft.gameplay27`。当前开发修复为 `endcraft.gameplay33`，已修复玻璃、水的透明混合及图集动画，用户实机确认正常，见 [第 33 版记录](docs/VALIDATION-gameplay33.md)。此前已接入分号切换、坡面跟随和原生受击反馈，并保留启动时的存档坐标锚点；实机记录 12 次伤害及 6 次受击状态变化。TNT 炸原生岩石仍待校准与验收，见 [第 31 版记录](docs/VALIDATION-gameplay31.md)。真实终末地中显示 MC 角色、装备、方块、物品栏及实体；MC 负责移动、飞行、物品和攻击，宿主继续运行原场景、敌人及任务。MC 网格进入 HGRP 场景绘制，使用场景深度，在原版 UI 之前绘制。
+在《明日方舟：终末地》的真实场景中，使用 Minecraft 的角色、物品栏、建造与战斗机制。
 
-2.0 修复原生传送与第三人称史蒂夫消失，支持剑、弓和 TNT 的 MC 伤害转交，以及创造模式宿主免伤。普通宿主生物可自动进入附近的船或载人矿车，座位和移动由 MC 管理；宿主本体随乘客位置更新，拆除载具时恢复原有控制。用户实机确认传送正常、史蒂夫可见、创造模式受击不掉血、TNT 击杀增加原生任务计数；诊断截图确认任务进度 11/26。实体渲染加入船、掉落物和箭。验收与限制见 [2.0 验证](docs/VALIDATION-gameplay27.md)、[2.0 说明](docs/RELEASE-2.0.0.md)。
+**当前版本：3.0.0 · 实验性联动原型 · Windows x64。** Minecraft 与终末地同时运行；MC 模拟玩法，宿主插件把角色、方块和实体绘制到终末地场景中。
 
-HUD 按宿主分辨率绘制，本机为 1920×1080；菜单遮罩为 20%，避免重复 HUD 混合。鞘翅和烟花推进已通过正常 MC 机制实测。复杂地形、多层碰撞、NPC 寻路、全新地图的建筑持久锚定、完整输入隔离和全设备兼容尚未完成。1.0 标签及附件保留为第 15 版历史快照，见 [1.0 说明](docs/RELEASE-1.0.0.md)。
+[下载 3.0](https://github.com/guchang233/EndCraft/releases/tag/v3.0.0) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
 
-MC 端来自 SkyCraft，独立运行于 `mc/run`，通过共享内存 `Local\EndCraft_v1` 与宿主交换协议版本 12 的数据。模型直接进入宿主场景；HGRP 不可用时退回独立深度合成，该退回方式不提供宿主建筑遮挡。
+## 能做什么
 
-## 当前安装与使用
+| 功能 | 当前效果 |
+|---|---|
+| 角色与界面 | 第一／第三人称 MC 角色、装备、九格快捷栏和库存；HUD 随宿主分辨率调整 |
+| 建造 | 在原生场景放置、破坏 MC 方块；玻璃透明、染色玻璃及水的颜色与动画已实机确认 |
+| 移动 | MC 行走、跳跃、创造飞行、鞘翅和烟花推进；视角支持上下看至 ±90° |
+| 战斗 | 保留 MC 武器冷却、暴击、弓和 TNT 的伤害计算，转交宿主伤害与受击组件 |
+| 游戏模式 | `/gamemode` 切换；创造／旁观模式同步宿主免伤 |
+| 实体 | 显示船、矿车、箭、掉落物等；普通体型宿主生物可进入附近载具，覆盖范围有限 |
+| 恢复 | 原生传送后的角色同步、死亡恢复、存档锚点保留及重新连接 |
 
-本机已注册并启用开发修复 `endcraft.gameplay33`，旧玩法模块与临时 Canvas 测试已停用。当前安装已配置下次启动自动开启桥接和项目 MC，并从原生角色当前位置接续。`tools/start-guest.ps1` 检查项目与副本的进程，避免两个 MC 同时写映射。自动启动依赖本机的源码开发实例和已安装工具链，尚非独立发行安装包。
+3.0 主要修复玻璃和流体渲染、高速上坡跟随、保存退出死锁，以及热更新／启动时的坐标锚点。原生受击状态变化已有实测。见 [3.0 更新说明](docs/RELEASE-3.0.0.md) 与 [验证记录](docs/VALIDATION-gameplay33.md)。
 
-按分号 `;` 切换 **MC 独占快捷键**，开关状态在 MC 画面提示；默认开启，关闭后原生快捷键可用。分号保留给此开关。TNT 炸开原生可破坏物需用原生炸弹命中一次来校准，校准仅保存在本机，游戏构建变化后重新采样；不破坏原生不可破坏的地表，也不生成 MC 石头矿石。
+## 开始使用
 
-桥接俯仰范围为 -90° 至 +90°，第三人称加入正常宿主射线避障。极端仰视时相机会靠近角色，按 F5 使用第一人称可获得清晰视野。
+本版本面向愿意使用源码与工具链的玩家和开发者，**尚无一键安装器**。只把 JAR 放进终末地目录不会生效；需要配套 Host、宿主模块和独立 MC 实例。
 
-按 `/` 打开 MC 指令输入（也支持 T），输入 `/gamemode creative`、`/gamemode survival`、`/gamemode adventure` 或 `/gamemode spectator` 后回车。权限仅授予项目自身的集成镜像世界，不更改其他 MC 实例或远程服务器。ASCII 指令输入已接入；中文输入法组合尚未接入。
+1. 按 [安装教程](docs/INSTALL.md) 准备 Windows、Visual Studio C++、JDK 25、Python 和固定版本源码。
+2. 构建并安装加载器／Host，注册 `endcraft.gameplay33`，配置启动。
+3. 通过原启动器进入终末地可移动场景，等待项目 MC 连接和物品栏出现。
+4. 先用玻璃、水和少量方块测试，再按 [操作教程](docs/USER-GUIDE.md) 体验飞行、战斗和载具。
 
-死亡后保持死亡前的视角。只剩 HUD 时先按 F5 切回第三人称；仍异常时关闭终末地原生菜单，再按 **Ctrl+Alt+R** 重新同步角色位置，或输入 **`/endcraft recover`**（同时切回第三人称）。MC 死亡和持续等待超过 5 秒会尝试自动同步。若终末地原角色死亡，需要先通过原游戏复活或换到存活角色。使用及验证见 [指令与恢复记录](docs/VALIDATION-gameplay21.md) 与 [2.0 验证](docs/VALIDATION-gameplay27.md)。
+已有本项目 2.0 安装的用户，按教程中的 [升级步骤](docs/INSTALL.md#从本项目-20-升级) 操作；保留存档及旧坐标锚点，只开启一个玩法模块。
 
-MC 最终攻击伤害按敌人最大生命映射：正常 MC 伤害 7 点对应目标最大生命的 35%，保留 MC 攻击冷却、暴击、附魔、箭和爆炸判定。TNT 对范围内代理产生的实际伤害转入宿主 Damage Modifier 流程。创造/旁观模式的 MC invulnerable 同步为宿主独立伤害屏蔽句柄；切回生存、关闭桥接或角色更换时撤销自己的句柄。创造模式不会补满之前损失的宿主血量。
+## 常用操作
 
-船通过 MC 物品右键放置，右键交互乘坐、Shift 下船；需要足够空间。实体网格使用同一场景深度。宿主水域尚未映射为 MC 流体，完整水上浮力不作为本版验收结论。
+| 按键／指令 | 操作 |
+|---|---|
+| WASD、空格 | 移动、跳跃；创造模式双击空格飞行 |
+| 1–9、滚轮 | 选择快捷栏物品 |
+| 左键、右键 | 攻击／破坏、使用／放置／交互 |
+| E、F5 | MC 库存、切换视角 |
+| T 或 `/` | 打开 MC 聊天／指令 |
+| `/gamemode creative` | 创造模式；生存、冒险、旁观也可切换 |
+| `/endcraft recover` | 重新同步位置并切回第三人称 |
+| Ctrl+Alt+R | 重新同步角色位置 |
+| `;` | 实验性 MC 独占开关；当前并非两款游戏的按键使用对象互斥切换 |
 
-当前按键：WASD 移动、空格跳跃、1–9 选择快捷栏、右键使用/放置、左键破坏、E 打开 MC 库存、F5 切换视角。鞘翅在加入镜像世界时修复并设为不损耗。穿戴在胸甲栏，空中再次按空格展开，手持烟花右键推进；本次受控测试使用正常 MC 展翼与物品使用方法，确认宿主跟随飞行。玩家双击空格输入与复杂地形连续起降仍需复验。桥接取得全局 PlayerController 的独立动作屏蔽令牌，关闭时移除自己的令牌；菜单快捷键和完整输入隔离仍需验证。
+## 已知限制
 
-```powershell
-python tools/runtime-report.py status --module endcraft.gameplay33 --output reports/gameplay33-status.json
-```
+- 地形碰撞采用高度场，洞穴、桥下、多层建筑及复杂墙体尚未完整适配；NPC 寻路不等同于碰撞阻挡。
+- MC 放置的水已正常显示；终末地原生水域尚未映射为 MC 流体，完整水上浮力未验证。
+- 分号关闭独占后，MC 仍可能同时响应输入；按用户指示，3.0 暂未修改为双向互斥切换。
+- TNT 的 MC 方块破坏、敌人伤害和任务击杀已有实测；**炸原生岩石仍待真实炸弹样本校准与验收**。
+- 战斗奖励、重新登录后的状态持久性、所有 NPC 类型及跨全新地图建筑锚定未全面验证。
+- MC 光影包尚未兼容。透明面复杂相交、水下效果及水面反射／折射仍需后续验证。
+- 当前实机结论来自开发机；不能据此保证所有游戏构建、显卡或其他模组组合可用。
 
-诊断含实际 MC 坐标、相机模式、上传的模型顶点数、相机层掩码、可见网格数和渲染错误。`active` 或网格上传计数增加不能单独证明视觉效果正确。
+## 文档与开发
 
-TNT 只破坏真正放置的 MC 方块，不再把宿主地面转换为石头、矿石或坑壁。下船会检查原生地面高度和空位。旧版已经写进存档的方块不会自动删除，避免误删建筑。新增验证见 [第 27 版](docs/VALIDATION-gameplay27.md)。
+| 文档 | 内容 |
+|---|---|
+| [安装与升级](docs/INSTALL.md) | 下载、源码构建、首次安装、2.0 升级、启动与卸载 |
+| [操作教程](docs/USER-GUIDE.md) | 建造、玻璃／水、鞘翅、游戏模式、战斗、载具和传送 |
+| [故障排查](docs/TROUBLESHOOTING.md) | 无 HUD、角色消失、卡地形、输入冲突、诊断与回退 |
+| [实现原理](docs/ARCHITECTURE.md) | 双进程通信、坐标、绘制、碰撞、战斗及光影路线 |
+| [3.0 更新说明](docs/RELEASE-3.0.0.md) | 发行内容、验证结果和未完成项 |
 
-## 构建
+开发版本使用 Minecraft **26.3**、Fabric Loader **0.19.5**、Fabric API **0.161.0+26.3**、JDK **25**；宿主模块为 `endcraft.gameplay33`，共享内存协议为 **12**。
 
-以下命令取得 2.0 源码及固定版本依赖：
+## 许可与来源
 
-```powershell
-git clone --recurse-submodules https://github.com/guchang233/EndCraft.git
-cd EndCraft
-git checkout v2.0.0
-git submodule update --init --recursive
-```
+MC 端改编自 [SkyCraft](https://github.com/chasmlol/SkyCraft)，使用 MIT 许可；宿主接入基于 [Better-Endfield](https://github.com/Dr-hydra/Better-Endfield)，使用 AGPL-3.0。原许可声明保留，详见 [LICENSE](LICENSE)、[mc/LICENSE](mc/LICENSE) 与 [第三方声明](THIRD-PARTY-NOTICES.md)。
 
-需要 Windows x64、Visual Studio C++ 工具链、JDK 25 和 Python 3。构建工具均在本机发现；没有修改系统 PATH，也没有升级现有 MC 实例。当前固定 Minecraft 26.3、Fabric Loader 0.19.5、Fabric API 0.161.0+26.3、Loom 1.17.21、Gradle 9.6.1。
-
-```powershell
-# Python 可使用 Codex 捆绑解释器或自己的 Python 3
-./tools/build-native.cmd
-./tools/build-framework.cmd
-./tools/build-mc.ps1 -JavaHome "你的 JDK 25 路径"
-python tools/package.py
-# 游戏正在运行时，打包至独立暂存目录，保留已加载的包：
-python tools/package.py --staging-only
-# 在对应标签的干净检出中打包 2.0 附件：
-python tools/package-release.py
-```
-
-外部源码固定提交见 `THIRD-PARTY-NOTICES.md`。若从不含 `third_party` 的源码包恢复：
-
-```powershell
-git clone https://github.com/chasmlol/SkyCraft.git third_party/SkyCraft
-git -C third_party/SkyCraft checkout bfcaf178524b92c2cdeb88e4ce0f13ef9ded6f32
-git clone https://github.com/Dr-hydra/Better-Endfield.git third_party/Better-Endfield
-git -C third_party/Better-Endfield checkout 35216279f716b9a7b90bf565ec7e25e8999705b9
-# mc 与协议源码已经随工程提供，无需覆盖。
-```
-
-## 实机验证
-
-安装脚本添加普通 XInput 代理，不执行手工映射，不修改游戏原始档案或反作弊文件。遇到已有同名 DLL、框架设置或索引时会保留它们并停止安装。
-
-```powershell
-python tools/install-probe.py install --game-dir "D:\Arknights Endfield"
-# 若游戏已经运行，需要正常退出并通过原启动器重启。
-# 已安装后更新加载器（游戏必须正常退出）：
-python tools/install-probe.py update
-# 旧加载器明确报告 Host 未加载时，也可提前部署并保留旧 DLL：
-python tools/install-probe.py stage-update
-# 下一次正常启动才加载修复版。
-# 首次安装的 Host 在实机中未启动接口时，部署 Host 路径诊断：
-python tools/install-probe.py stage-host
-./tools/build-mc.ps1 -Run -JavaHome "你的 JDK 25 路径"
-python tools/runtime-report.py host-status --output reports/host-status.json
-python tools/runtime-report.py probe --output reports/method-probe.json
-python tools/runtime-report.py observe --output reports/camera-start.json
-# 进入可操控场景、转动视角后再读取。
-python tools/runtime-report.py status --output reports/runtime-status.json
-python tools/diagnose.py
-# 可分别添加只读元数据、角色读取和共享内存发布模块（每种仅注册一次）：
-python tools/register-inspector.py inspect
-python tools/register-inspector.py actor
-python tools/register-inspector.py telemetry
-# 首次安装后注册当前玩法模块（每个身份仅一次）：
-python tools/register-inspector.py gameplay33
-python tools/configure-gameplay-startup.py --auto-start --module gameplay33
-# 更新已有存档时，沿用之前验证过的锚点；首次安装无需此参数：
-# python tools/configure-gameplay-startup.py --auto-start --module gameplay33 --anchor-report reports/previous-status.json
-python tools/runtime-report.py observe --module endcraft.telemetry --output reports/telemetry-start.json
-python tools/runtime-report.py status --module endcraft.telemetry --output reports/telemetry-status.json
-```
-
-开发客户端不需要复制账户凭据；Loom 的 Realms 认证提示不代表本地 Fabric 加载失败。正式发行时应通过合法 MC 启动器认证，不捆绑账号或游戏文件。
-
-`probe` 只解析方法。`observe` 在严格匹配 `CameraManager.TailLateTick(System.Single)` 和相机读方法后，通过 Host 的共享 Hook 链在游戏线程读取矩阵和 FOV；它不写相机、角色、生命值或输入。解析成功显示 `resolved_not_verified`，实际连续读到有效相机数据后才确认相机观察能力。已加载的图形 DLL 列表不等于当前图形 API，环境报告中的 API 仅来自标有时间的最近运行日志。
-
-原生 DLL 的 JSON 输入严格解析。诊断模块和玩法模块分别启用；玩法模块的 enable/disable 通过认证 RPC 执行。停用基础探针会撤销观察、停止心跳并关闭映射。宿主保留已经加载的 DLL；已有 DLL 更换需要重启，新身份模块可以通过索引添加。
-
-`endcraft.motion` 和 `endcraft.teleport` 是单次移动试验模块，默认只观察。仅显式 `nudge` 请求会安排游戏线程写入；水平距离限 0.05，8 帧后恢复。它们没有开启持续接管，也没有实现飞行。结果与恢复限制见 `docs/IMPLEMENTATION.md`。MC 将已验证的只读宿主角色采样写入 `mc/run/endcraft-host-actor.json`，其中坐标仍为宿主原始单位，年龄表示采样新鲜度。
-
-加载器通过游戏目录的 `EndCraft-bootstrap.ini` 定位 Host，并将 Host 的配置目录固定到本次安装记录的 Windows 用户目录。加载路径与错误保存在游戏目录 `EndCraft-loader.log`。共享内存仅授予当前 Windows 用户、SYSTEM 和管理员，并使用 medium 完整性级别，以支持启动器提升权限而 MC 保持普通权限的情况。
-
-MC 对映射的读取、写入与释放使用同一锁，输入回调在锁外执行；宿主停止心跳后会释放旧视图和句柄，允许重新连接。Windows 上的 `NativeLinkTest` 使用独立随机映射与真正的 C++ 子进程测试两轮连接、心跳、退出及重连，不占用游戏映射。构建包含 30 项 Java 测试；`python tools/test_installer.py` 另测 7 项安装文件保护行为。原生测试覆盖模块身份/生命周期，以及移动试验的距离上限、重复请求、不可行走位置、恢复和角色切换；模拟测试不作为实机证据。
-
-Host 优先读取项目 `.tools/framework/third-party/index.json`，保留用户目录索引作为工具与旧安装兼容入口；两份索引使用同一凭据，均不应分享。`tools/prepare-framework.ps1` 从固定提交生成附加路径与进程编号日志的 Host 源码，原始上游文件保持不变。独立进程 `tools/host-smoke.py` 的成功只说明框架可运行，不说明实机接入成功。
-
-## 卸载与产物
-
-```powershell
-# 正常关闭终末地之后：
-python tools/install-probe.py uninstall
-```
-
-卸载只删除安装记录中哈希仍匹配的自有文件；修改过的文件会保留。运行日志不删除。`dist/` 包含模块 ZIP、MC JAR 和 SHA256 校验文件；`reports/` 保存本机与运行结果；`.tools/` 中的认证索引和安装状态不应分享。
-
-阶段与验收表见 `docs/IMPLEMENTATION.md`。本项目包含 AGPL-3.0 与 MIT 源码，分发时遵守 `LICENSE` 和第三方声明。
+发行附件不含游戏文件、账号凭据、存档、运行日志或含 UID 的截图。上游源码固定提交随完整源码附件提供。

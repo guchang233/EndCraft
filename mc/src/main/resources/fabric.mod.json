@@ -3,7 +3,7 @@
   "id": "skycraft",
   "version": "${version}",
   "name": "EndCraft Guest",
-  "description": "SkyCraft-derived Minecraft guest for the experimental EndCraft Endfield bridge. Combat and elytra support remain incomplete in 1.0.0.",
+  "description": "Minecraft gameplay, inventory, entities and mesh export for the experimental EndCraft bridge to Arknights: Endfield.",
   "authors": [
     "chasmlol (SkyCraft upstream)",
     "EndCraft adaptation"
