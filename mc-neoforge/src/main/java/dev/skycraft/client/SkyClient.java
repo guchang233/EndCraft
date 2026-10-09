@@ -156,10 +156,15 @@ public final class SkyClient {
 		}
 	}
 
-	// Minecraft is started with Skyrim (the SKSE plugin launches it), so it goes when that Skyrim has
-	// closed for good: saved and shut down the normal way. -Dskycraft.quitWithSkyrim=false keeps it
-	// running instead (development: restarting Skyrim without restarting Minecraft).
-	private static final boolean QUIT_WITH_SKYRIM = Boolean.parseBoolean(System.getProperty("skycraft.quitWithSkyrim", "false"));
+	// A linked Minecraft runs hidden, so once its Endfield has closed (normally or by crashing) nobody
+	// can see or use it: it saves and shuts down the normal way. -Dskycraft.quitWithSkyrim=false keeps it
+	// running instead (development: restarting Endfield without restarting Minecraft).
+	private static final boolean QUIT_WITH_SKYRIM = Boolean.parseBoolean(System.getProperty("skycraft.quitWithSkyrim", "true"));
+	// The link drops (and SkyLink forgets the pid) as soon as the heartbeat stops, so remember who it was.
+	private static int linkedSkyrimPid;
+	// Process queries can be refused for a protected game process; a link that never comes back
+	// within this long is treated as gone too.
+	private static final long UNLINKED_QUIT_MS = 2 * 60 * 1000;
 	private static long skyrimGoneSince;
 	private static long nextSkyrimCheck;
 	// Started hidden by Skyrim but never connected: nobody can see or use this Minecraft, and it
@@ -177,18 +182,26 @@ public final class SkyClient {
 			minecraft.stop();
 			return;
 		}
-		if (!QUIT_WITH_SKYRIM || pid == 0 || now < nextSkyrimCheck) {
+		if (pid != 0) {
+			linkedSkyrimPid = pid;
+		}
+		if (!QUIT_WITH_SKYRIM || linkedSkyrimPid == 0 || now < nextSkyrimCheck) {
 			return;
 		}
 		nextSkyrimCheck = now + 1000;
-		if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+		if (pid != 0) {
+			// Still linked (heartbeat fresh): a long loading screen or stall is not a close.
 			skyrimGoneSince = 0;
 			return;
 		}
 		if (skyrimGoneSince == 0) {
 			skyrimGoneSince = now;
-		} else if (now - skyrimGoneSince > 5000) {
-			SkyCraft.LOG.info("SkyCraft: Skyrim (pid {}) has closed; saving and quitting", pid);
+			return;
+		}
+		boolean alive = ProcessHandle.of(linkedSkyrimPid).map(ProcessHandle::isAlive).orElse(false);
+		if ((!alive && now - skyrimGoneSince > 5000) || now - skyrimGoneSince > UNLINKED_QUIT_MS) {
+			SkyCraft.LOG.info("SkyCraft: Endfield (pid {}) has closed; saving and quitting", linkedSkyrimPid);
+			linkedSkyrimPid = 0;
 			minecraft.stop();
 		}
 	}

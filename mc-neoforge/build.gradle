@@ -14,7 +14,7 @@ neoForge {
             gameDirectory = file('run')
             programArguments.addAll '--username', 'EndCraftNeo', '--width', '640', '--height', '360'
             jvmArguments.addAll '--enable-native-access=ALL-UNNAMED', '-Xmx3G'
-            systemProperty 'skycraft.quitWithSkyrim', 'false'
+            systemProperty 'skycraft.quitWithSkyrim', providers.gradleProperty('bridgeHost').getOrElse('false')
             systemProperty 'skycraft.startHidden', providers.gradleProperty('bridgeHost').getOrElse('false')
             systemProperty 'endcraft.allowHostConnection', providers.gradleProperty('bridgeHost').getOrElse('false')
         }

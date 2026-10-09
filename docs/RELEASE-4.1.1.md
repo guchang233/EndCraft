@@ -8,6 +8,7 @@
 |---|---|
 | 导入模块提示“模块声明缺少有效的 author” | 玩法模块的 `module.json` 缺少 Better-Endfield 3.5.4 要求的 `author`；已补上，默认配置含 `auto_enable: true` |
 | MC 一直连不上终末地，日志显示 “Endfield has not created it yet” | 共享内存由 `endcraft.probe` 模块创建，玩法模块只负责打开；4.1.0 只发布了玩法模块。现新增附件 `EndCraft-probe-4.1.1-win-x64.zip` |
+| 终末地闪退或被强制结束后，隐藏的 MC 一直留在后台 | “随终末地退出”默认关闭，且连接一断就丢了终末地进程号，退出检查永远不触发。现默认开启：记住所连终末地，进程消失 5 秒后（或连接中断超过 2 分钟）MC 正常保存并退出；`-Dskycraft.quitWithSkyrim=false` 可保留旧行为 |
 | 模块包内含大量文档 | 模块 ZIP 只保留 DLL、`module.json`、README 与许可文件 |
 
 ## 安装

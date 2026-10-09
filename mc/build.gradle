@@ -24,7 +24,7 @@ loom {
 	runs {
 		client {
 			programArgs "--username", (System.getenv("SKYCRAFT_USERNAME") ?: "Dovahkiin")
-			vmArgs "--enable-native-access=ALL-UNNAMED", "-Dskycraft.quitWithSkyrim=false", "-Dskycraft.startHidden=true", "-Xmx2G"
+			vmArgs "--enable-native-access=ALL-UNNAMED", "-Dskycraft.startHidden=true", "-Xmx2G"
 			programArgs "--width", "640", "--height", "360"
 		}
 	}
