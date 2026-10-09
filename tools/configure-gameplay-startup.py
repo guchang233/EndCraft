@@ -56,7 +56,9 @@ if __name__=='__main__':
     group.add_argument('--auto-start',action='store_true')
     group.add_argument('--manual',action='store_true')
     parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33'],default='gameplay33')
-    parser.add_argument('--anchor-report',type=Path,help='Previously verified runtime report whose world anchor should be retained.')
+    anchors=parser.add_mutually_exclusive_group()
+    anchors.add_argument('--anchor-report',type=Path,help='Previously verified runtime report whose world anchor should be retained.')
+    anchors.add_argument('--anchor',type=float,nargs=3,metavar=('X','Y','Z'),help='World anchor in host units; LAN players use the host anchor (tools/show-anchor.py).')
     args=parser.parse_args()
-    anchor=json.loads(args.anchor_report.read_text(encoding='utf-8'))['body']['gameplay']['origin_raw_units'] if args.anchor_report else None
+    anchor=json.loads(args.anchor_report.read_text(encoding='utf-8'))['body']['gameplay']['origin_raw_units'] if args.anchor_report else args.anchor
     main(args.auto_start,args.module,anchor)

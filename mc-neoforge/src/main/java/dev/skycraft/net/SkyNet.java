@@ -171,6 +171,41 @@ public final class SkyNet {
 		}
 	}
 
+	/**
+	 * Client -> server: this player has their own host game and terrain, so the host's terrain is
+	 * not sent to them (SkyTerrainSync).
+	 */
+	public record HostLinked(boolean linked) implements CustomPacketPayload {
+		public static final Type<HostLinked> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "host_linked"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, HostLinked> CODEC = StreamCodec.composite(ByteBufCodecs.BOOL, HostLinked::linked, HostLinked::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/**
+	 * Client -> server: a guest's own host game moved them (fast travel, respawn, recovery). Players
+	 * on a LAN world are trusted with their own position, as with the host on its own server.
+	 */
+	public record Teleport(double x, double y, double z, float yaw, float pitch) implements CustomPacketPayload {
+		public static final Type<Teleport> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "teleport"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Teleport> CODEC = StreamCodec.composite(
+			ByteBufCodecs.DOUBLE, Teleport::x,
+			ByteBufCodecs.DOUBLE, Teleport::y,
+			ByteBufCodecs.DOUBLE, Teleport::z,
+			ByteBufCodecs.FLOAT, Teleport::yaw,
+			ByteBufCodecs.FLOAT, Teleport::pitch,
+			Teleport::new
+		);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
     public static void register(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar("12");
         registrar.playToServer(Hurt.TYPE, Hurt.CODEC, (payload, context) -> context.enqueueWork(() ->
@@ -179,6 +214,15 @@ public final class SkyNet {
             SkyDig.open((ServerPlayer) context.player(), payload.world(), payload.pos(), payload.material())));
         registrar.playToServer(DigReveal.TYPE, DigReveal.CODEC, (payload, context) -> context.enqueueWork(() ->
             SkyDig.reveal((ServerPlayer) context.player(), payload.world(), payload.cells(), payload.materials().stream().mapToInt(Integer::intValue).toArray())));
+        registrar.playToServer(HostLinked.TYPE, HostLinked.CODEC, (payload, context) -> context.enqueueWork(() ->
+            SkyTerrainSync.setHostLinked((ServerPlayer) context.player(), payload.linked())));
+        registrar.playToServer(Teleport.TYPE, Teleport.CODEC, (payload, context) -> context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (!Double.isFinite(payload.x()) || !Double.isFinite(payload.y()) || !Double.isFinite(payload.z())) return;
+            player.stopFallFlying();
+            player.teleportTo(player.serverLevel(), payload.x(), payload.y(), payload.z(), payload.yaw(), payload.pitch());
+            player.fallDistance = 0.0F;
+        }));
         registrar.playToClient(Died.TYPE, Died.CODEC, (payload, context) -> context.enqueueWork(() -> dev.skycraft.client.SkyClient.requestRecovery()));
         // A guest with its own host link already has terrain from it; only plain LAN guests take the host's.
         registrar.playToClient(TerrainClear.TYPE, TerrainClear.CODEC, (payload, context) -> {

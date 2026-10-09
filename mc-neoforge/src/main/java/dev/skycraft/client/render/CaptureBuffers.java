@@ -23,6 +23,10 @@ final class CaptureBuffers implements MultiBufferSource {
     UnaryOperator<Vec3> transform = UnaryOperator.identity();
     private final CapturedMesh discarded = new CapturedMesh();
     @Override public VertexConsumer getBuffer(RenderType type) {
+        // Name tags and other text: the host draws neither the tinted background nor the glyph
+        // colours, so a tag became an opaque white bar over the player.
+        if (name(type).startsWith("text")) return discarded;
+        if (type.mode() == com.mojang.blaze3d.vertex.VertexFormat.Mode.LINES) return lines(); // F3+B hitboxes
         ResourceLocation location = textureLocation(type);
         if (location == null || type.mode() != com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS) return discarded;
         int id = TextureExporter.texture(location); if (id < 0) return discarded;
@@ -32,6 +36,15 @@ final class CaptureBuffers implements MultiBufferSource {
         var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
         mesh.finish(); mesh.transform = transform; mesh.flags = 8 | (blended ? 2 : 1); return mesh;
     }
+    /** Lines drawn as thin opaque prisms in the block-atlas batch (LineCapture). */
+    LineCapture lines() {
+        int id = TextureExporter.texture(TextureAtlas.LOCATION_BLOCKS);
+        var key = new Key(id, false);
+        if (id < 0 || !batches.containsKey(key) && batches.size() >= 64) return new LineCapture(discarded);
+        var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
+        mesh.finish(); mesh.transform = transform; mesh.flags = 8 | 1;
+        return new LineCapture(mesh);
+    }
     private static final Map<RenderType, Boolean> BLENDED = new java.util.concurrent.ConcurrentHashMap<>();
     /**
      * Blended batches are drawn without depth writes, so only types that really blend may be marked.
@@ -40,11 +53,24 @@ final class CaptureBuffers implements MultiBufferSource {
      */
     static boolean blended(RenderType type) {
         return BLENDED.computeIfAbsent(type, t -> {
+            // Player and mob skins use entity_translucent only so a skin's outer layer can have
+            // holes; their pixels are opaque or clear. Drawn as blended they lose depth and body
+            // parts cover each other in draw order. Translucent blocks (block atlas) still blend.
+            if (name(t).startsWith("entity_translucent") && !TextureAtlas.LOCATION_BLOCKS.equals(textureLocation(t))) return false;
             Object shard = compositeShard(t, "transparencyState");
             String name = shard != null ? shard.toString() : t.toString();
             return shard != null ? !name.equals("no_transparency") : !name.contains("no_transparency");
         });
     }
+    /** The render type's registered name, e.g. "entity_translucent" (from "RenderType[name:state]"). */
+    static String name(RenderType type) {
+        return NAMES.computeIfAbsent(type, t -> {
+            String text = t.toString();
+            int start = text.indexOf('['), end = text.indexOf(':');
+            return start >= 0 && end > start ? text.substring(start + 1, end) : text;
+        });
+    }
+    private static final Map<RenderType, String> NAMES = new java.util.concurrent.ConcurrentHashMap<>();
     private static Object compositeShard(RenderType type, String field) {
         try {
             Field state = type.getClass().getDeclaredField("state"); state.setAccessible(true); Object composite = state.get(type);

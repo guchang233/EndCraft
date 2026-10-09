@@ -15,8 +15,18 @@ final class EntityExporter {
         avatar.send(Proto.REN_AVATAR, null);
         Vec3 origin = mc.player.position();
         var scene = new CaptureBuffers(); int count = 0;
+        boolean hitboxes = dispatcher.shouldRenderHitBoxes();
         for (var entity : mc.level.entitiesForRendering()) {
-            if (entity == mc.player || entity instanceof dev.skycraft.combat.SkyrimActorEntity || entity.distanceToSqr(origin) > 64 * 64 || ++count > 96) continue;
+            if (entity == mc.player || entity.distanceToSqr(origin) > 64 * 64) continue;
+            if (entity instanceof dev.skycraft.combat.SkyrimActorEntity) {
+                // Host NPC stand-ins are invisible, so vanilla F3+B skips them; outline them in magenta.
+                if (hitboxes) {
+                    var box = entity.getBoundingBox().move(-origin.x, -origin.y, -origin.z);
+                    scene.lines().box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, 0xFF40FF);
+                }
+                continue;
+            }
+            if (++count > 96) continue;
             Vec3 position = entity.getPosition(partial).subtract(origin);
             dispatcher.render(entity, position.x, position.y, position.z, entity.getYRot(), partial, new PoseStack(), scene, dispatcher.getPackedLightCoords(entity, partial));
         }
@@ -30,6 +40,7 @@ final class EntityExporter {
             }
         }
         SableExporter.capture(mc, partial, origin, scene);
+        TerrainDebug.capture(origin, scene);
         scene.send(Proto.REN_SCENE, origin);
     }
     static <E extends net.minecraft.world.level.block.entity.BlockEntity> void capturePlotBlockEntity(

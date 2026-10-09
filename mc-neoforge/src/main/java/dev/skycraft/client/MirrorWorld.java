@@ -49,6 +49,8 @@ public final class MirrorWorld {
 					lan_port=0
 					# false lets guests join without Minecraft account verification.
 					lan_online_mode=true
+					# true lets guests use commands (/gamemode, /tp, ...).
+					lan_cheats=false
 					""");
 			}
 			try (var in = java.nio.file.Files.newBufferedReader(file)) {

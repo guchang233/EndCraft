@@ -119,6 +119,7 @@ public final class SkyClient {
 			InputBridge.releaseAll();
 		}
 		InputBridge.drain(minecraft);
+		HostKeys.poll(minecraft);
 		ProxySync.frame(minecraft);
 
 		LocalPlayer player = minecraft.player;
@@ -351,6 +352,9 @@ public final class SkyClient {
 					sp.fallDistance = 0;
 				}
 			});
+		} else if (dev.skycraft.platform.NeoPackets.canSend(dev.skycraft.net.SkyNet.Teleport.TYPE)) {
+			// In a friend's world: their server would reject a jump this large as moving too quickly.
+			dev.skycraft.platform.NeoPackets.send(new dev.skycraft.net.SkyNet.Teleport(x, y, z, yaw, pitch));
 		}
 		SkyCraft.LOG.info("SkyCraft: teleported to {} {} {}", x, y, z);
 	}

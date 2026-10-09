@@ -97,12 +97,12 @@ python tools/fetch-neoforge-mods.py
 **主机**：进入桥接存档后，按 T 打开 MC 聊天并输入：
 
 ```text
-/endcraft lan                 # 开放局域网，验证正版账号
-/endcraft lan offline         # 不验证正版账号（本机连不上 Mojang 验证服务器时使用）
-/endcraft lan offline 25565   # 指定端口
+/endcraft lan                        # 开放局域网，验证正版账号
+/endcraft lan offline                # 不验证正版账号（本机连不上 Mojang 验证服务器时使用）
+/endcraft lan offline cheats 25565   # 参数顺序任意：cheats 允许访客使用指令，数字为端口
 ```
 
-聊天框会显示端口和本机局域网地址。也可以在 `mc-neoforge/run/config/skycraft.properties` 写入 `lan=true`（以及可选的 `lan_port`、`lan_online_mode=false`），进入存档后自动开放。
+聊天框会显示端口和本机局域网地址。也可以在 `mc-neoforge/run/config/skycraft.properties` 写入 `lan=true`（以及可选的 `lan_port`、`lan_online_mode=false`、`lan_cheats=true`），进入存档后自动开放。
 
 **访客**：安装与主机相同的 NeoForge 21.1.247、Create、Aeronautics、Sable、Create: Flight Control 和 EndCraft NeoForge 客户端 jar，在多人游戏中选择局域网世界，或直接连接主机显示的地址。
 
@@ -112,6 +112,16 @@ python tools/fetch-neoforge-mods.py
 | 地形碰撞 | 主机服务器把终末地地形的碰撞体素和三角面，按访客位置（水平 96 格内）分批同步给访客，访客可以站在终末地地形上 |
 | 地形显示 | 访客的 MC 把收到的三角面按材质着色，显示为低多边形地面 |
 | 主机看到访客 | 访客的 MC 角色、放置的方块和机械动力装置照常绘制到终末地场景 |
+
+### 两边都运行终末地
+
+访客也可以运行自己的终末地和桥接客户端，各自在终末地中看到对方的 MC 角色和建筑。两边的终末地坐标必须换算到同一套 MC 坐标，所以访客要使用主机的世界锚点：
+
+1. 主机进入终末地游戏世界后执行 `python tools/show-anchor.py`，把输出的锚点发给访客。
+2. 访客执行 `python tools/configure-gameplay-startup.py --auto-start --anchor X Y Z`，然后重启终末地。改锚点会让访客自己存档里已有建筑相对终末地的位置整体平移。
+3. 访客进入终末地游戏世界后，在 MC 聊天输入 `/endcraft join` 自动搜索并加入局域网世界，或 `/endcraft join <地址>` 直接连接；`/endcraft leave` 回到自己的桥接存档。也可在 `skycraft.properties` 写 `join=<地址>` 启动后自动加入。
+
+自带终末地的访客使用自己终末地的地形，服务器不再向其发送主机地形；终末地内的快速传送会通知服务器，避免被判定为移动过快。两边需位于终末地的同一地区，NPC 各自独立，宿主战斗只作用于各自的终末地。
 
 限制：地形只来自主机终末地角色周围已加载的区域，访客走远后没有地形；终末地 NPC 在访客端不可见；访客不能看到终末地原生画面。**该功能已通过构建和单元测试，尚未实机联机验收。**
 

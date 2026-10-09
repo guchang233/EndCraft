@@ -58,6 +58,13 @@ public final class InputBridge {
             }
         });
     }
+    /** A key the host does not forward (HostKeys), delivered exactly like a forwarded one. */
+    static void injectKey(Minecraft mc, int key, boolean down) {
+        if (key < 0 || key >= KEYS.length || KEYS[key] == down) return;
+        KEYS[key] = down;
+        ((KeyboardAccess) mc.keyboardHandler).endcraft$keyPress(mc.getWindow().getWindow(), key, GLFW.glfwGetKeyScancode(key),
+            down ? GLFW.GLFW_PRESS : GLFW.GLFW_RELEASE, modifiers());
+    }
     public static void releaseAll() {
         var mc = Minecraft.getInstance();
         long window = mc.getWindow().getWindow();

@@ -31,7 +31,7 @@ public class EndCraftNeoTestAgent {
         var vm = VirtualMachine.attach(args[0]); try {vm.loadAgent(args[1],args[2]);} finally {vm.detach();}
     }
     public static void agentmain(String op, Instrumentation inst) throws Exception {
-        if(!Set.of("status","open_world","fixture","ship","stop","third_person","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe").contains(op)) throw new IllegalArgumentException(op);
+        if(!Set.of("status","open_world","fixture","ship","stop","third_person","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe","keys_probe","inject_quote","inject_f1","close_screen").contains(op)) throw new IllegalArgumentException(op);
         Class<?> minecraft = Arrays.stream(inst.getAllLoadedClasses()).filter(c -> c.getName().equals("net.minecraft.client.Minecraft")).findFirst().orElseThrow();
         loader = minecraft.getClassLoader(); Object mc = call(minecraft,"getInstance");
         call(mc,"execute",(Runnable)() -> {
@@ -44,7 +44,8 @@ public class EndCraftNeoTestAgent {
                 }
                 Object player = mc.getClass().getField("player").get(mc), level = mc.getClass().getField("level").get(mc);
                 Object screen = mc.getClass().getField("screen").get(mc);
-                log("operation="+op+" screen="+(screen==null?"none":screen.getClass().getName())+" player="+(player==null?"none":call(player,"position")));
+                Object overlay=call(mc,"getOverlay");
+                log("operation="+op+" overlay="+(overlay==null?"none":overlay.getClass().getName())+" screen="+(screen==null?"none":screen.getClass().getName())+" player="+(player==null?"none":call(player,"position")));
                 if(level != null) {
                     Object container = call(cls("dev.ryanhcode.sable.api.sublevel.SubLevelContainer"),"getContainer",level);
                     var ships=(List<?>)call(container,"getAllSubLevels");log("client_ships="+ships.size());
@@ -53,6 +54,28 @@ public class EndCraftNeoTestAgent {
                 if(op.equals("third_person")) {
                     call(mc.getClass().getField("options").get(mc),"setCameraType",cls("net.minecraft.client.CameraType").getField("THIRD_PERSON_BACK").get(null));return;
                 }
+                if(op.equals("close_screen")) {
+                    Object current=mc.getClass().getField("screen").get(mc);
+                    if(current!=null&&current.getClass().getName().equals("net.minecraft.client.gui.screens.PauseScreen")) {call(mc,"setScreen",(Object)null);log("closed pause screen");}
+                    else log("close_screen: left "+(current==null?"none":current.getClass().getName()));
+                    return;
+                }
+                if(op.equals("inject_quote")||op.equals("inject_f1")) {
+                    int key=op.equals("inject_quote")?39:290;
+                    var inject=cls("dev.skycraft.client.InputBridge").getDeclaredMethod("injectKey",minecraft,int.class,boolean.class);inject.setAccessible(true);
+                    inject.invoke(null,mc,key,true);inject.invoke(null,mc,key,false);log("injected key "+key);return;
+                }
+                if(op.equals("keys_probe")) {
+                    Object sky=call(cls("dev.skycraft.client.SkyClient"),"sky");
+                    Class<?> ib=cls("dev.skycraft.client.InputBridge");
+                    var f=cls("dev.skycraft.client.render.TerrainDebug").getDeclaredField("enabled");f.setAccessible(true);
+                    Object options=mc.getClass().getField("options").get(mc);
+                    var hk=cls("dev.skycraft.client.HostKeys").getDeclaredField("GET_ASYNC_KEY_STATE");hk.setAccessible(true);
+                    log("keys_probe inGame="+call(sky,"inGame")+" menuOpen="+call(sky,"menuOpen")+" loading="+call(sky,"loading")+" linked="+call(cls("dev.skycraft.client.SkyClient"),"linked")
+                        +" F1down="+call(ib,"isKeyDown",290)+" F3down="+call(ib,"isKeyDown",292)+" quoteDown="+call(ib,"isKeyDown",39)
+                        +" hideGui="+options.getClass().getField("hideGui").get(options)+" terrainDebug="+f.get(null)+" asyncKeyHandle="+(hk.get(null)!=null)
+                        +" hitboxes="+call(call(mc,"getEntityRenderDispatcher"),"shouldRenderHitBoxes"));return;
+                }
                 if(op.equals("rendertype_probe")) {
                     Class<?> rt=cls("net.minecraft.client.renderer.RenderType");
                     for(String name:List.of("solid","cutout","translucent")){String t=rt.getMethod(name).invoke(null).toString();log("rendertype "+name+" text="+t.contains("text")+" alpha="+t.contains("alpha")+" translucent="+t.contains("translucent")+" :: "+t);}
@@ -60,8 +83,11 @@ public class EndCraftNeoTestAgent {
                     var blended=cls("dev.skycraft.client.render.CaptureBuffers").getDeclaredMethod("blended",rt);blended.setAccessible(true);
                     var rl=cls("net.minecraft.resources.ResourceLocation");
                     for(Object[] t:new Object[][]{{"solid",rt.getMethod("solid").invoke(null)},{"cutout",rt.getMethod("cutout").invoke(null)},{"translucent",rt.getMethod("translucent").invoke(null)},
-                        {"entitySolid",rt.getMethod("entitySolid",rl).invoke(null,atlas)},{"entityCutout",rt.getMethod("entityCutout",rl).invoke(null,atlas)},{"entityTranslucent",rt.getMethod("entityTranslucent",rl).invoke(null,atlas)}})
-                        log("blended "+t[0]+"="+blended.invoke(null,t[1]));
+                        {"entitySolid",rt.getMethod("entitySolid",rl).invoke(null,atlas)},{"entityCutout",rt.getMethod("entityCutout",rl).invoke(null,atlas)},{"entityTranslucent",rt.getMethod("entityTranslucent",rl).invoke(null,atlas)},
+                        {"entityTranslucent(skin)",rt.getMethod("entityTranslucent",rl).invoke(null,rl.getMethod("withDefaultNamespace",String.class).invoke(null,"textures/entity/player/wide/steve.png"))},
+                        {"text",rt.getMethod("text",rl).invoke(null,rl.getMethod("withDefaultNamespace",String.class).invoke(null,"default/0"))}})
+                        {var nameOf=cls("dev.skycraft.client.render.CaptureBuffers").getDeclaredMethod("name",rt);nameOf.setAccessible(true);
+                        log("blended "+t[0]+"="+blended.invoke(null,t[1])+" name="+nameOf.invoke(null,t[1]));}
                     String t=rt.getMethod("entitySolid",cls("net.minecraft.resources.ResourceLocation")).invoke(null,atlas).toString();
                     log("rendertype entitySolid text="+t.contains("text")+" :: "+t);return;
                 }

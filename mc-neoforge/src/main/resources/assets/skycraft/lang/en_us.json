@@ -1,3 +1,5 @@
 {
-  "entity.skycraft.skyrim_actor": "Skyrim NPC"
+  "entity.skycraft.skyrim_actor": "Skyrim NPC",
+  "key.categories.endcraft": "EndCraft",
+  "key.endcraft.host_terrain": "Show host terrain triangles"
 }

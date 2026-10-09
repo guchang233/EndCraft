@@ -31,6 +31,13 @@ public final class SkyTerrainSync {
 	}
 
 	private static final Map<UUID, Guest> GUESTS = new HashMap<>();
+	/** Guests with their own host game: their terrain comes from it, not from this server. */
+	private static final java.util.Set<UUID> HOST_LINKED = new java.util.HashSet<>();
+
+	public static void setHostLinked(ServerPlayer player, boolean linked) {
+		if (linked) HOST_LINKED.add(player.getUUID());
+		else HOST_LINKED.remove(player.getUUID());
+	}
 
 	private SkyTerrainSync() {
 	}
@@ -40,9 +47,10 @@ public final class SkyTerrainSync {
 			return;
 		}
 		GUESTS.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
+		HOST_LINKED.removeIf(id -> server.getPlayerList().getPlayer(id) == null);
 		int epoch = SkyCollision.epoch();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			if (SkyNet.isHost(player) || !NeoPackets.canSend(player, SkyNet.TerrainRegion.TYPE)) {
+			if (SkyNet.isHost(player) || HOST_LINKED.contains(player.getUUID()) || !NeoPackets.canSend(player, SkyNet.TerrainRegion.TYPE)) {
 				continue;
 			}
 			Guest guest = GUESTS.computeIfAbsent(player.getUUID(), id -> new Guest());
