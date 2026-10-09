@@ -13,10 +13,10 @@ import org.junit.jupiter.api.condition.OS;
 /** Real Windows mapping + JNI-free Java FFM across two test processes. No game process. */
 @EnabledOnOs(OS.WINDOWS)
 class NativeLinkTest {
-    private static void await(BooleanSupplier condition) throws Exception {
+    private static void await(BooleanSupplier condition, java.util.function.Supplier<String> state) throws Exception {
         long deadline=System.nanoTime()+10_000_000_000L;
         while(!condition.getAsBoolean()) {
-            if(System.nanoTime()>deadline) fail("Native mapping condition timed out");
+            if(System.nanoTime()>deadline) fail("Native mapping condition timed out; "+state.get());
             Thread.sleep(25);
         }
     }
@@ -36,14 +36,20 @@ class NativeLinkTest {
             Path output=Files.createTempFile("endcraft-standin",".log");
             builder.redirectOutput(output.toFile());
             Process nativeHost=builder.start();
+            java.util.function.Supplier<String> state=()->{
+                String text;
+                try { text=Files.readString(output); } catch(java.io.IOException e) { text=e.toString(); }
+                return "mapping="+name+" host alive="+nativeHost.isAlive()+(nativeHost.isAlive()?"":" exit="+nativeHost.exitValue())
+                    +" output="+text.substring(0,Math.min(text.length(),1500));
+            };
             try {
-                await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s!=null); });
+                await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s!=null); }, state);
                 assertFalse(SkyLink.active(),"A test host must never take over Minecraft");
                 assertEquals((int)nativeHost.pid(),SkyLink.skyrimPid());
                 assertTrue(SkyLink.generation()>previousGeneration);
                 previousGeneration=SkyLink.generation();
                 long first=SkyLink.withSegment(s->s.get(JAVA_LONG,Proto.H_SKYRIM_HEARTBEAT));
-                await(() -> SkyLink.withSegment(s->s.get(JAVA_LONG,Proto.H_SKYRIM_HEARTBEAT)>first));
+                await(() -> SkyLink.withSegment(s->s.get(JAVA_LONG,Proto.H_SKYRIM_HEARTBEAT)>first), state);
                 SkyLink.poll();
                 SkyLink.withSegment(s->{
                     assertEquals(Proto.MAGIC,s.get(JAVA_INT,Proto.H_MAGIC));
@@ -53,7 +59,7 @@ class NativeLinkTest {
                     return null;
                 });
                 assertEquals(0,nativeHost.waitFor(),Files.readString(output));
-                await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s==null); });
+                await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s==null); }, state);
                 assertEquals(0,SkyLink.skyrimPid());
             } finally {
                 if(nativeHost.isAlive()) nativeHost.destroyForcibly();

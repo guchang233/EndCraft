@@ -51,6 +51,11 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay33.dll
 if errorlevel 1 exit /b 1
+rem gameplay34: F1 and F3 forwarded to Minecraft (HUD toggle, debug screen and F3 combinations)
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay34\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay34.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay34.dll
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_VISUAL_PROBE /DENDCRAFT_TARGETS_PROBE /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.targets\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.targets.dll /link user32.lib /DYNAMICBASE /NXCOMPAT

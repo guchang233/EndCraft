@@ -119,7 +119,6 @@ public final class SkyClient {
 			InputBridge.releaseAll();
 		}
 		InputBridge.drain(minecraft);
-		HostKeys.poll(minecraft);
 		ProxySync.frame(minecraft);
 
 		LocalPlayer player = minecraft.player;

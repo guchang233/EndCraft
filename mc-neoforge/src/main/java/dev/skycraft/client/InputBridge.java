@@ -58,7 +58,7 @@ public final class InputBridge {
             }
         });
     }
-    /** A key the host does not forward (HostKeys), delivered exactly like a forwarded one. */
+    /** A key delivered exactly like a forwarded one (diagnostics). */
     static void injectKey(Minecraft mc, int key, boolean down) {
         if (key < 0 || key >= KEYS.length || KEYS[key] == down) return;
         KEYS[key] = down;

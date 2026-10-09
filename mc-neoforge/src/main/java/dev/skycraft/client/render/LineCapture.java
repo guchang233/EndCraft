@@ -11,7 +11,9 @@ import net.minecraft.resources.ResourceLocation;
  * near-white block texture. Vertices arrive in pairs (VertexFormat.Mode.LINES).
  */
 final class LineCapture implements VertexConsumer {
-	private static final float HALF_WIDTH = 0.015F;
+	/** Thin enough to read as a line, thick enough to survive the host's resolution and distance. */
+	static final float HITBOX_HALF_WIDTH = 0.02F;
+	private final float halfWidth;
 	private static final ResourceLocation WHITE = ResourceLocation.withDefaultNamespace("block/white_concrete");
 	private final CapturedMesh out;
 	private final float u, v;
@@ -20,8 +22,9 @@ final class LineCapture implements VertexConsumer {
 	private int firstColor, color = -1, count;
 	private boolean open;
 
-	LineCapture(CapturedMesh out) {
+	LineCapture(CapturedMesh out, float halfWidth) {
 		this.out = out;
+		this.halfWidth = halfWidth;
 		var sprite = Minecraft.getInstance().getModelManager().getAtlas(TextureAtlas.LOCATION_BLOCKS).getSprite(WHITE);
 		this.u = sprite.getU(0.5F);
 		this.v = sprite.getV(0.5F);
@@ -98,12 +101,14 @@ final class LineCapture implements VertexConsumer {
 		float rx = Math.abs(dy) < 0.9F ? 0 : 1, ry = Math.abs(dy) < 0.9F ? 1 : 0;
 		float px = dy * 0 - dz * ry, py = dz * rx - dx * 0, pz = dx * ry - dy * rx;
 		float pl = (float) Math.sqrt(px * px + py * py + pz * pz);
-		px = px / pl * HALF_WIDTH; py = py / pl * HALF_WIDTH; pz = pz / pl * HALF_WIDTH;
+		px = px / pl * halfWidth; py = py / pl * halfWidth; pz = pz / pl * halfWidth;
 		float qx = dy * pz - dz * py, qy = dz * px - dx * pz, qz = dx * py - dy * px;
-		float[][] side = {{px, py, pz}, {qx, qy, qz}, {-px, -py, -pz}, {-qx, -qy, -qz}};
+		// A triangular prism: three sides 120 degrees apart, 18 vertices a segment.
+		float c = -0.5F, s = 0.8660254F;
+		float[][] side = {{px, py, pz}, {c * px + s * qx, c * py + s * qy, c * pz + s * qz}, {c * px - s * qx, c * py - s * qy, c * pz - s * qz}};
 		int r = argb >> 16 & 0xFF, g = argb >> 8 & 0xFF, bl = argb & 0xFF;
-		for (int i = 0; i < 4; i++) {
-			float[] s0 = side[i], s1 = side[(i + 1) % 4];
+		for (int i = 0; i < 3; i++) {
+			float[] s0 = side[i], s1 = side[(i + 1) % 3];
 			float nx = s0[0] + s1[0], ny = s0[1] + s1[1], nz = s0[2] + s1[2];
 			vertex(a[0] + s0[0], a[1] + s0[1], a[2] + s0[2], r, g, bl, nx, ny, nz);
 			vertex(b[0] + s0[0], b[1] + s0[1], b[2] + s0[2], r, g, bl, nx, ny, nz);

@@ -19,8 +19,14 @@ import org.lwjgl.glfw.GLFW;
 public final class TerrainDebug {
 	public static final KeyMapping KEY = new KeyMapping("key.endcraft.host_terrain", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_APOSTROPHE, "key.categories.endcraft");
 	private static final double RADIUS = 24.0, HEIGHT = 12.0;
-	/** 72 vertices a triangle; the host takes at most 200000 vertices in one mesh, shared with ships. */
-	private static final int MAX_TRIANGLES = 1500;
+	/**
+	 * 54 vertices a triangle. The scene is re-sent every frame through the shared render ring, so
+	 * this stays well below the host's 200000-vertex mesh limit.
+	 */
+	private static final int MAX_TRIANGLES = 800;
+	/** The edges lie on the host's own ground: lift them toward the player and draw them thick. */
+	private static final double LIFT = 0.05;
+	private static final float HALF_WIDTH = 0.035F;
 	private static final int WALKABLE = 0x40FF70, OBJECT_WALKABLE = 0x40C8FF, STEEP = 0xFF8030, STAIR_HELPER = 0xFFE040;
 	private static boolean enabled;
 
@@ -40,14 +46,17 @@ public final class TerrainDebug {
 		}
 		List<SkyTri> tris = new ArrayList<>();
 		SkyCollision.trianglesNear(new AABB(origin.x - RADIUS, origin.y - HEIGHT, origin.z - RADIUS, origin.x + RADIUS, origin.y + HEIGHT, origin.z + RADIUS), tris);
-		LineCapture lines = scene.lines();
+		LineCapture lines = scene.lines(HALF_WIDTH);
 		int drawn = 0;
 		for (SkyTri t : tris) {
 			if (++drawn > MAX_TRIANGLES) break;
 			int color = t.stairHelper ? STAIR_HELPER : !t.walkable ? STEEP : t.terrain ? WALKABLE : OBJECT_WALKABLE;
-			double ax = t.ax - origin.x, ay = t.ay - origin.y, az = t.az - origin.z;
-			double bx = t.bx - origin.x, by = t.by - origin.y, bz = t.bz - origin.z;
-			double cx = t.cx - origin.x, cy = t.cy - origin.y, cz = t.cz - origin.z;
+			// Lift along the normal, on the player's side of the surface (the winding isn't trusted).
+			double side = t.nx * (origin.x - t.ax) + t.ny * (origin.y + 1.0 - t.ay) + t.nz * (origin.z - t.az) >= 0 ? LIFT : -LIFT;
+			double ox = t.nx * side - origin.x, oy = t.ny * side - origin.y, oz = t.nz * side - origin.z;
+			double ax = t.ax + ox, ay = t.ay + oy, az = t.az + oz;
+			double bx = t.bx + ox, by = t.by + oy, bz = t.bz + oz;
+			double cx = t.cx + ox, cy = t.cy + oy, cz = t.cz + oz;
 			lines.segment(ax, ay, az, bx, by, bz, color);
 			lines.segment(bx, by, bz, cx, cy, cz, color);
 			lines.segment(cx, cy, cz, ax, ay, az, color);

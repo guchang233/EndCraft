@@ -1,4 +1,4 @@
-import java.lang.instrument.Instrumentation;
+﻿import java.lang.instrument.Instrumentation;
 import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
@@ -30,10 +30,29 @@ public class EndCraftNeoTestAgent {
         if(args.length != 3) throw new IllegalArgumentException("PID, JAR, operation");
         var vm = VirtualMachine.attach(args[0]); try {vm.loadAgent(args[1],args[2]);} finally {vm.detach();}
     }
+    /** Samples, off the render thread, what Windows reports, what Minecraft holds and what changed. */
+    static void keyWatch(Object mc) throws Exception {
+        Class<?> ib=cls("dev.skycraft.client.InputBridge");
+        var debug=cls("dev.skycraft.client.render.TerrainDebug").getDeclaredField("enabled");debug.setAccessible(true);
+        Object options=mc.getClass().getField("options").get(mc);var hideGui=options.getClass().getField("hideGui");
+        Object sky=call(cls("dev.skycraft.client.SkyClient"),"sky");
+        String last="";long end=System.currentTimeMillis()+120000;
+        log("key_watch started: press F1, F3, F3+B and the quote key now");
+        while(System.currentTimeMillis()<end){
+            Object screen=mc.getClass().getField("screen").get(mc);
+            String now="mc[F1="+call(ib,"isKeyDown",290)+" F3="+call(ib,"isKeyDown",292)+" quote="+call(ib,"isKeyDown",39)+" B="+call(ib,"isKeyDown",66)+"]"
+                +" hideGui="+hideGui.get(options)+" terrain="+debug.get(null)+" hitboxes="+call(call(mc,"getEntityRenderDispatcher"),"shouldRenderHitBoxes")
+                +" screen="+(screen==null?"none":screen.getClass().getSimpleName())+" inGame="+call(sky,"inGame")+" menuOpen="+call(sky,"menuOpen")+" loading="+call(sky,"loading");
+            if(!now.equals(last)){log(System.currentTimeMillis()%100000+" "+now);last=now;}
+            Thread.sleep(50);
+        }
+        log("key_watch ended");
+    }
     public static void agentmain(String op, Instrumentation inst) throws Exception {
-        if(!Set.of("status","open_world","fixture","ship","stop","third_person","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe","keys_probe","inject_quote","inject_f1","close_screen").contains(op)) throw new IllegalArgumentException(op);
+        if(!Set.of("status","open_world","fixture","ship","stop","third_person","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe","keys_probe","inject_quote","inject_f1","close_screen","key_watch").contains(op)) throw new IllegalArgumentException(op);
         Class<?> minecraft = Arrays.stream(inst.getAllLoadedClasses()).filter(c -> c.getName().equals("net.minecraft.client.Minecraft")).findFirst().orElseThrow();
         loader = minecraft.getClassLoader(); Object mc = call(minecraft,"getInstance");
+        if(op.equals("key_watch")) { var t=new Thread(()->{try{keyWatch(mc);}catch(Throwable e){log("key_watch error="+e);}},"endcraft-key-watch");t.setDaemon(true);t.start();return; }
         call(mc,"execute",(Runnable)() -> {
             try {
                 if(op.equals("stop")) {call(mc,"stop");return;}
@@ -70,10 +89,9 @@ public class EndCraftNeoTestAgent {
                     Class<?> ib=cls("dev.skycraft.client.InputBridge");
                     var f=cls("dev.skycraft.client.render.TerrainDebug").getDeclaredField("enabled");f.setAccessible(true);
                     Object options=mc.getClass().getField("options").get(mc);
-                    var hk=cls("dev.skycraft.client.HostKeys").getDeclaredField("GET_ASYNC_KEY_STATE");hk.setAccessible(true);
                     log("keys_probe inGame="+call(sky,"inGame")+" menuOpen="+call(sky,"menuOpen")+" loading="+call(sky,"loading")+" linked="+call(cls("dev.skycraft.client.SkyClient"),"linked")
                         +" F1down="+call(ib,"isKeyDown",290)+" F3down="+call(ib,"isKeyDown",292)+" quoteDown="+call(ib,"isKeyDown",39)
-                        +" hideGui="+options.getClass().getField("hideGui").get(options)+" terrainDebug="+f.get(null)+" asyncKeyHandle="+(hk.get(null)!=null)
+                        +" hideGui="+options.getClass().getField("hideGui").get(options)+" terrainDebug="+f.get(null)
                         +" hitboxes="+call(call(mc,"getEntityRenderDispatcher"),"shouldRenderHitBoxes"));return;
                 }
                 if(op.equals("rendertype_probe")) {

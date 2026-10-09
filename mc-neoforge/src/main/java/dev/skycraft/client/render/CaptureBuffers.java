@@ -38,12 +38,15 @@ final class CaptureBuffers implements MultiBufferSource {
     }
     /** Lines drawn as thin opaque prisms in the block-atlas batch (LineCapture). */
     LineCapture lines() {
+        return lines(LineCapture.HITBOX_HALF_WIDTH);
+    }
+    LineCapture lines(float halfWidth) {
         int id = TextureExporter.texture(TextureAtlas.LOCATION_BLOCKS);
         var key = new Key(id, false);
-        if (id < 0 || !batches.containsKey(key) && batches.size() >= 64) return new LineCapture(discarded);
+        if (id < 0 || !batches.containsKey(key) && batches.size() >= 64) return new LineCapture(discarded, halfWidth);
         var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
         mesh.finish(); mesh.transform = transform; mesh.flags = 8 | 1;
-        return new LineCapture(mesh);
+        return new LineCapture(mesh, halfWidth);
     }
     private static final Map<RenderType, Boolean> BLENDED = new java.util.concurrent.ConcurrentHashMap<>();
     /**
