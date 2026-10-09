@@ -28,9 +28,13 @@ class NativeLinkTest {
         int previousGeneration=SkyLink.generation();
         for(int round=0;round<2;round++) {
             ProcessBuilder builder=new ProcessBuilder(directory.resolve("endcraft-standin.exe").toString(),
-                    directory.resolve("endcraft.probe.dll").toString(),"--seconds","3");
+                    directory.resolve("endcraft.probe.dll").toString(),"--seconds","8");
             builder.environment().put("ENDCRAFT_STANDIN_MAPPING",name);
             builder.redirectErrorStream(true);
+            // A file, not a pipe: the host prints status JSON while running and would block on a
+            // full pipe that is only read after it exits.
+            Path output=Files.createTempFile("endcraft-standin",".log");
+            builder.redirectOutput(output.toFile());
             Process nativeHost=builder.start();
             try {
                 await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s!=null); });
@@ -48,11 +52,12 @@ class NativeLinkTest {
                     assertTrue(s.get(JAVA_LONG,Proto.H_MC_HEARTBEAT)>0);
                     return null;
                 });
-                assertEquals(0,nativeHost.waitFor(),nativeHost.inputReader().readAllAsString());
+                assertEquals(0,nativeHost.waitFor(),Files.readString(output));
                 await(() -> { SkyLink.poll(); return SkyLink.withSegment(s->s==null); });
                 assertEquals(0,SkyLink.skyrimPid());
             } finally {
                 if(nativeHost.isAlive()) nativeHost.destroyForcibly();
+                Files.deleteIfExists(output);
             }
         }
     }
