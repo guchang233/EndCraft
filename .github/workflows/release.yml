@@ -82,7 +82,7 @@ jobs:
           path: mc-neoforge/build/reports/tests/
 
       - name: Package release
-        run: python tools/package-release.py
+        run: python tools/package-release.py --module endcraft.gameplay34
 
       - name: Upload build output
         uses: actions/upload-artifact@v4

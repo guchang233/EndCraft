@@ -1,6 +1,6 @@
-# NeoForge 1.21.1 与机械动力航空学（EndCraft 4.0）
+# NeoForge 1.21.1 与机械动力航空学（EndCraft 4.1）
 
-EndCraft 4.0 新增的 NeoForge 1.21.1 客户端，可在终末地场景中使用 Create、机械动力航空学与 Create: Flight Control。已在开发机上完成首轮实机测试（见下方“实机测试记录”）；仍属实验性联动，**尚未标记为航空学完全兼容**，未完成项见文末。
+EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，可在终末地场景中使用 Create、机械动力航空学与 Create: Flight Control。已在开发机上完成首轮实机测试（见下方“实机测试记录”）；仍属实验性联动，**尚未标记为航空学完全兼容**，未完成项见文末。
 
 ## 为什么使用 1.21.1
 
@@ -8,7 +8,7 @@ EndCraft 4.0 新增的 NeoForge 1.21.1 客户端，可在终末地场景中使�
 
 | 组件 | 固定版本 |
 |---|---|
-| EndCraft Guest | `4.0.0` |
+| EndCraft Guest | `4.1.0` |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.247 |
 | Create | 6.0.10+mc1.21.1 |
@@ -16,7 +16,7 @@ EndCraft 4.0 新增的 NeoForge 1.21.1 客户端，可在终末地场景中使�
 | Sable | 2.0.6+mc1.21.1 |
 | Create: Flight Control | 0.7.7（代码 GPL-3.0，资源保留所有权利） |
 | Java | JDK 25；桥接类使用 Java 22 字节码和 Foreign Function & Memory API |
-| 已有宿主模块 | `endcraft.gameplay33`，协议 12 |
+| 宿主模块 | `endcraft.gameplay34`（F1/F3 转发）；`gameplay33` 仍可用，协议 12 |
 
 参考：[航空学官方源码](https://github.com/Creators-of-Aeronautics/Simulated-Project)、[Create 官方依赖指南](https://wiki.createmod.net/developers/depend-on-create/neoforge-1.21.1)、[Sable 官方源码](https://github.com/ryanhcode/sable)。依赖文件名、下载地址和 SHA-512 固定在 `mc-neoforge/modpack.lock.json`，不使用“自动下载最新版”。
 
@@ -54,7 +54,7 @@ python tools/fetch-neoforge-mods.py
 
 产物：
 
-- `mc-neoforge/build/libs/endcraft-neoforge-guest-4.0.0.jar`
+- `mc-neoforge/build/libs/endcraft-neoforge-guest-4.1.0.jar`
 - 同目录的 `-sources.jar`
 - `mc-neoforge/build/reports/tests/test/index.html`：测试报告
 
@@ -90,40 +90,22 @@ python tools/fetch-neoforge-mods.py
 
 日志在 `reports/neoforge-startup.log` 和 `mc-neoforge/run/logs/latest.log`。首次启动还会下载 1.21.1 的资产；构建成功不代表资产已全部缓存。
 
-## 局域网联机（实验）
+## 升级宿主模块到 gameplay34（4.1）
 
-一台电脑运行终末地和桥接客户端作为主机，其他人用普通的 NeoForge 1.21.1 客户端加入同一个世界。复用 MC 自带的局域网联机，不需要其他人运行终末地。
+`gameplay34` 与 `gameplay33` 只差一处：转发 F1（隐藏 MC HUD）和 F3（调试界面、F3+B 碰撞箱）。已加载的模块不能覆盖，按新模块身份注册并切换，保留现有世界锚点：
 
-**主机**：进入桥接存档后，按 T 打开 MC 聊天并输入：
-
-```text
-/endcraft lan                        # 开放局域网，验证正版账号
-/endcraft lan offline                # 不验证正版账号（本机连不上 Mojang 验证服务器时使用）
-/endcraft lan offline cheats 25565   # 参数顺序任意：cheats 允许访客使用指令，数字为端口
+```powershell
+python tools/runtime-report.py status --module endcraft.gameplay33 --output reports/before-upgrade.json
+python tools/register-inspector.py gameplay34
+python tools/activate-gameplay2.py --old gameplay33 --new gameplay34
+python tools/configure-gameplay-startup.py --auto-start --module gameplay34 --anchor-report reports/before-upgrade.json
 ```
 
-聊天框会显示端口和本机局域网地址。也可以在 `mc-neoforge/run/config/skycraft.properties` 写入 `lan=true`（以及可选的 `lan_port`、`lan_online_mode=false`、`lan_cheats=true`），进入存档后自动开放。
+然后完全退出并重新启动终末地。不升级时其余功能照常可用，只是 F1/F3 不会传到 MC。
 
-**访客**：安装与主机相同的 NeoForge 21.1.247、Create、Aeronautics、Sable、Create: Flight Control 和 EndCraft NeoForge 客户端 jar，在多人游戏中选择局域网世界，或直接连接主机显示的地址。
+## 局域网联机
 
-| 效果 | 说明 |
-|---|---|
-| 出生位置 | 访客加入或重生时出现在主机玩家身边，不会掉进虚空世界 |
-| 地形碰撞 | 主机服务器把终末地地形的碰撞体素和三角面，按访客位置（水平 96 格内）分批同步给访客，访客可以站在终末地地形上 |
-| 地形显示 | 访客的 MC 把收到的三角面按材质着色，显示为低多边形地面 |
-| 主机看到访客 | 访客的 MC 角色、放置的方块和机械动力装置照常绘制到终末地场景 |
-
-### 两边都运行终末地
-
-访客也可以运行自己的终末地和桥接客户端，各自在终末地中看到对方的 MC 角色和建筑。两边的终末地坐标必须换算到同一套 MC 坐标，所以访客要使用主机的世界锚点：
-
-1. 主机进入终末地游戏世界后执行 `python tools/show-anchor.py`，把输出的锚点发给访客。
-2. 访客执行 `python tools/configure-gameplay-startup.py --auto-start --anchor X Y Z`，然后重启终末地。改锚点会让访客自己存档里已有建筑相对终末地的位置整体平移。
-3. 访客进入终末地游戏世界后，在 MC 聊天输入 `/endcraft join` 自动搜索并加入局域网世界，或 `/endcraft join <地址>` 直接连接；`/endcraft leave` 回到自己的桥接存档。也可在 `skycraft.properties` 写 `join=<地址>` 启动后自动加入。
-
-自带终末地的访客使用自己终末地的地形，服务器不再向其发送主机地形；终末地内的快速传送会通知服务器，避免被判定为移动过快。两边需位于终末地的同一地区，NPC 各自独立，宿主战斗只作用于各自的终末地。
-
-限制：地形只来自主机终末地角色周围已加载的区域，访客走远后没有地形；终末地 NPC 在访客端不可见；访客不能看到终末地原生画面。**该功能已通过构建和单元测试，尚未实机联机验收。**
+主机开放局域网、其他玩家加入、两边都运行终末地时的锚点对齐，见 [局域网联机说明](MULTIPLAYER.md)。
 
 ## 存档与回退
 
@@ -159,6 +141,13 @@ python tools/fetch-neoforge-mods.py
 .\tools\test-neoforge-runtime.ps1 -Operation pick_probe     # 朝首个船体的射线命中与距离
 .\tools\test-neoforge-runtime.ps1 -Operation rendertype_probe # 渲染类型的半透明判定
 ```
+
+## 实机测试记录（2026-10-09，4.1）
+
+- **局域网联机**：同一台电脑上第二个 NeoForge 客户端（不连接终末地）通过局域网列表加入主机世界；离线模式登录、Sable 握手通过，访客出现在主机身边，并以 MC 角色显示在终末地中。
+- **人物遮挡**：玩家皮肤使用 `entity_translucent`，按半透明导出时不写深度，身体部件按提交顺序互相覆盖。皮肤（非方块图集）改为镂空导出；名牌文字不再导出（终末地不应用文字的顶点颜色，会显示为白条）。
+- **按键**：终末地在前台时，MC 进程的 `GetAsyncKeyState` 读不到任何按键（采样显示连转发正常的 B 和引号也是未按下），因此 F1/F3 改由宿主模块转发，需要新模块身份 `gameplay34`。引号键实测会在 MC 中切换地形线框；线框原先 3 厘米粗且一半埋在终末地地面下，现已抬高、加粗。
+- **一键重启**：`restart-neoforge-mc.cmd` 已实测可在终末地运行时重新拉起桥接客户端。
 
 ## 还需要完成的兼容验证
 

@@ -2,9 +2,19 @@
 
 在《明日方舟：终末地》的真实场景中，使用 Minecraft 的角色、物品栏、建造与战斗机制。
 
-**当前版本：4.0.0 · 实验性联动原型 · Windows x64。** Minecraft 与终末地同时运行；MC 模拟玩法，宿主插件把角色、方块和实体绘制到终末地场景中。
+**当前版本：4.1.0 · 实验性联动原型 · Windows x64。** Minecraft 与终末地同时运行；MC 模拟玩法，宿主插件把角色、方块和实体绘制到终末地场景中。
 
-[4.0 更新说明](docs/RELEASE-4.0.0.md) · [发行版本](https://github.com/guchang233/EndCraft/releases) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
+[4.1 更新说明](docs/RELEASE-4.1.0.md) · [局域网联机](docs/MULTIPLAYER.md) · [发行版本](https://github.com/guchang233/EndCraft/releases) · [安装与升级](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [实现原理](docs/ARCHITECTURE.md)
+
+## 4.1 新增：局域网联机
+
+NeoForge 客户端可以复用 MC 的局域网联机：一台电脑运行终末地作为主机，在 MC 聊天输入 `/endcraft lan offline` 开放世界，其他人用相同模组的 NeoForge 客户端加入。
+
+- **普通访客**只运行 MC，出生在主机身边，可以站在主机同步过来的终末地地形上；主机在终末地中看到访客的 MC 角色和建筑。
+- **自带终末地的访客**用 `/endcraft join` 加入，并通过 `tools/show-anchor.py` 与主机统一世界锚点，各自在自己的终末地中看到所有玩家。
+- 引号键 `'` 在终末地中显示地形碰撞三角面，F3+B 显示碰撞箱；MC 崩溃时双击 `restart-neoforge-mc.cmd` 重新连回终末地。
+
+步骤与限制见 [局域网联机说明](docs/MULTIPLAYER.md)，更新内容见 [4.1 更新说明](docs/RELEASE-4.1.0.md)。
 
 ## 4.0 新增：机械动力与航空学
 
@@ -27,8 +37,9 @@ NeoForge 客户端能在终末地场景里搭建机械动力装置和航空学�
 | 战斗 | 保留 MC 武器冷却、暴击、弓和 TNT 的伤害计算，转交宿主伤害与受击组件 |
 | 游戏模式 | `/gamemode` 切换；创造／旁观模式同步宿主免伤 |
 | 实体 | 显示船、矿车、箭、掉落物等；普通体型宿主生物可进入附近载具，覆盖范围有限 |
-| 恢复 | 原生传送后的角色同步、死亡恢复、存档锚点保留及重新连接；终末地切换场景后自动重发方块网格 |
+| 恢复 | 原生传送后的角色同步、死亡恢复、存档锚点保留及重新连接；终末地切换场景后自动重发方块网格；MC 崩溃后可一键重启连回 |
 | 机械动力／航空学 | 仅 NeoForge 客户端：Create 装置、Sable 船体显示与选取、船体对终末地地形的碰撞（实验） |
+| 联机 | 仅 NeoForge 客户端：局域网联机，访客同步终末地地形；可选离线模式与允许作弊 |
 
 Fabric 客户端的玻璃和流体渲染、高速上坡跟随、保存退出与坐标锚点修复来自 3.0，见 [3.0 更新说明](docs/RELEASE-3.0.0.md) 与 [验证记录](docs/VALIDATION-gameplay33.md)。
 
@@ -66,6 +77,10 @@ python tools/fetch-neoforge-mods.py      # 下载并校验固定版本的模组
 | `/endcraft recover` | 重新同步位置并切回第三人称 |
 | Ctrl+Alt+R | 重新同步角色位置 |
 | `;` | 实验性 MC 独占开关；当前并非两款游戏的按键使用对象互斥切换 |
+| `/endcraft lan [offline] [cheats] [端口]` | NeoForge：开放局域网 |
+| `/endcraft join [地址]`、`/endcraft leave` | NeoForge：加入局域网世界、回到自己的世界 |
+| `'` | NeoForge：在终末地中显示地形碰撞三角面 |
+| F1、F3+B | NeoForge 需宿主模块 `gameplay34`：隐藏 MC HUD、显示碰撞箱 |
 
 ## 已知限制
 
@@ -77,6 +92,7 @@ python tools/fetch-neoforge-mods.py      # 下载并校验固定版本的模组
 - MC 光影包尚未兼容。透明面复杂相交、水下效果及水面反射／折射仍需后续验证。
 - NeoForge 客户端：航空学船体在终末地地面的起降与滑行、移动船体的宿主碰撞体（NPC 阻挡、登船）、Create: Flight Control 飞控方块尚未完成验收。
 - 1.21.1 与 26.3 的存档互不兼容，两个客户端的建筑和库存相互独立。
+- 联机：两台电脑各自运行终末地的联机尚未实机验证；普通访客只能看到主机终末地角色附近的地形。
 - 当前实机结论来自开发机；不能据此保证所有游戏构建、显卡或其他模组组合可用。
 
 ## 文档与开发
@@ -87,11 +103,13 @@ python tools/fetch-neoforge-mods.py      # 下载并校验固定版本的模组
 | [操作教程](docs/USER-GUIDE.md) | 建造、玻璃／水、鞘翅、游戏模式、战斗、载具和传送 |
 | [故障排查](docs/TROUBLESHOOTING.md) | 无 HUD、角色消失、卡地形、输入冲突、诊断与回退 |
 | [实现原理](docs/ARCHITECTURE.md) | 双进程通信、坐标、绘制、碰撞、战斗及光影路线 |
+| [4.1 更新说明](docs/RELEASE-4.1.0.md) | 局域网联机、地形线框、碰撞箱、F1/F3 与一键重启 |
+| [局域网联机](docs/MULTIPLAYER.md) | 开放局域网、加入、锚点对齐、掉线恢复 |
 | [4.0 更新说明](docs/RELEASE-4.0.0.md) | NeoForge 客户端、机械动力／航空学适配及修复 |
 | [NeoForge 说明](docs/NEOFORGE.md) | 1.21.1 客户端构建、启动、切换、诊断与待验收项 |
 | [3.0 更新说明](docs/RELEASE-3.0.0.md) | Fabric 客户端发行内容、验证结果和未完成项 |
 
-Fabric 客户端使用 Minecraft **26.3**、Fabric Loader **0.19.5**、Fabric API **0.161.0+26.3**；NeoForge 客户端使用 Minecraft **1.21.1**、NeoForge **21.1.247**。两者均用 JDK **25**，宿主模块为 `endcraft.gameplay33`，共享内存协议为 **12**。
+Fabric 客户端使用 Minecraft **26.3**、Fabric Loader **0.19.5**、Fabric API **0.161.0+26.3**；NeoForge 客户端使用 Minecraft **1.21.1**、NeoForge **21.1.247**。两者均用 JDK **25**，宿主模块为 `endcraft.gameplay34`（`gameplay33` 仍可用，只是不转发 F1/F3），共享内存协议为 **12**。
 
 ## 许可与来源
 
