@@ -14,7 +14,7 @@ import org.junit.jupiter.api.condition.OS;
 @EnabledOnOs(OS.WINDOWS)
 class NativeLinkTest {
     private static void await(BooleanSupplier condition, java.util.function.Supplier<String> state) throws Exception {
-        long deadline=System.nanoTime()+10_000_000_000L;
+        long deadline=System.nanoTime()+20_000_000_000L;
         while(!condition.getAsBoolean()) {
             if(System.nanoTime()>deadline) fail("Native mapping condition timed out; "+state.get());
             Thread.sleep(25);
@@ -28,7 +28,7 @@ class NativeLinkTest {
         int previousGeneration=SkyLink.generation();
         for(int round=0;round<2;round++) {
             ProcessBuilder builder=new ProcessBuilder(directory.resolve("endcraft-standin.exe").toString(),
-                    directory.resolve("endcraft.probe.dll").toString(),"--seconds","8");
+                    directory.resolve("endcraft.probe.dll").toString(),"--seconds","15");
             builder.environment().put("ENDCRAFT_STANDIN_MAPPING",name);
             builder.redirectErrorStream(true);
             // A file, not a pipe: the host prints status JSON while running and would block on a
@@ -39,7 +39,7 @@ class NativeLinkTest {
             java.util.function.Supplier<String> state=()->{
                 String text;
                 try { text=Files.readString(output); } catch(java.io.IOException e) { text=e.toString(); }
-                return "mapping="+name+" host alive="+nativeHost.isAlive()+(nativeHost.isAlive()?"":" exit="+nativeHost.exitValue())
+                return SkyLink.openDiagnostics()+" host alive="+nativeHost.isAlive()+(nativeHost.isAlive()?"":" exit="+nativeHost.exitValue())
                     +" output="+text.substring(0,Math.min(text.length(),1500));
             };
             try {

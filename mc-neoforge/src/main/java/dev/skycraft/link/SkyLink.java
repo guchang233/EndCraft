@@ -88,6 +88,9 @@ public final class SkyLink {
 
 	private static volatile MemorySegment shm;
 	private static long lastOpenAttempt;
+	// Why the last attempt to link did not succeed, for diagnostics.
+	private static int openAttempts;
+	private static String lastOpenResult = "not attempted";
 	private static int skyrimPid;
 	private static volatile int generation;
 
@@ -108,6 +111,12 @@ public final class SkyLink {
 	/** Bumps whenever a (new) Skyrim instance is on the other end: everything Skyrim caches must be resent. */
 	public static synchronized int generation() {
 		return generation;
+	}
+
+	/** Link attempts so far and why the last one did not link (tests and diagnostics). */
+	public static synchronized String openDiagnostics() {
+		return "mapping=" + MAPPING_NAME + " attempts=" + openAttempts + " last=" + lastOpenResult + " duplicate=" + duplicate
+			+ " allowHostConnection=" + Boolean.getBoolean("endcraft.allowHostConnection");
 	}
 
 	/** True when another bridged Minecraft was already running at startup, so this one never links. */
@@ -161,6 +170,7 @@ public final class SkyLink {
 			return;
 		}
 		lastOpenAttempt = now;
+		openAttempts++;
 		try (Arena arena = Arena.ofConfined()) {
 			MemorySegment name = arena.allocateFrom(MAPPING_NAME, StandardCharsets.UTF_16LE);
 			MemorySegment handle = (MemorySegment) OPEN_FILE_MAPPING.invokeExact(OPEN_STATE, FILE_MAP_ALL_ACCESS, 0, name);
@@ -168,6 +178,7 @@ public final class SkyLink {
 				// Say why, once per reason: 2 is "Skyrim hasn't made it yet" (normal while it loads),
 				// 5 is "not allowed" (a Skyrim run as administrator, before 0.1.1).
 				int error = (int) LAST_ERROR.get(OPEN_STATE, 0L);
+				lastOpenResult = "OpenFileMapping error " + error;
 				if (error != lastOpenError) {
 					lastOpenError = error;
 					SkyCraft.LOG.info("SkyCraft: can't open Endfield shared memory yet (Windows error {}{})", error,
@@ -179,6 +190,7 @@ public final class SkyLink {
 			if (view.address() == 0) {
 				int ignored=(int)CLOSE_HANDLE.invokeExact(handle);
 				SkyCraft.LOG.error("EndCraft: MapViewOfFile failed");
+				lastOpenResult = "MapViewOfFile failed";
 				return;
 			}
 			MemorySegment seg = view.reinterpret(MAPPING_BYTES);
@@ -189,9 +201,11 @@ public final class SkyLink {
             if(beat==0 || nativeNow<beat || nativeNow-beat>=HEARTBEAT_TIMEOUT_MS) {
                 int ignoredView=(int)UNMAP_VIEW.invokeExact(view);
                 int ignoredHandle=(int)CLOSE_HANDLE.invokeExact(handle);
+                lastOpenResult = "host heartbeat " + beat + " stale at " + nativeNow;
                 return;
             }
             if (magic != MAGIC || version != VERSION) {
+                lastOpenResult = "protocol mismatch magic " + Integer.toHexString(magic) + " version " + version;
                 int ignoredView=(int)UNMAP_VIEW.invokeExact(view);
                 int ignoredHandle=(int)CLOSE_HANDLE.invokeExact(handle);
 				SkyCraft.LOG.error("SkyCraft: protocol mismatch (magic {} version {}); expected version {}", Integer.toHexString(magic), version, VERSION);
@@ -203,8 +217,10 @@ public final class SkyLink {
 			generation++;
 			mappingHandle=handle;
 			shm = seg;
+			lastOpenResult = "linked";
 			SkyCraft.LOG.info("SkyCraft: linked to Endfield (pid {})", seg.get(JAVA_INT, OFF_HEADER + H_SKYRIM_PID));
 		} catch (Throwable t) {
+			lastOpenResult = t.toString();
 			SkyCraft.LOG.error("SkyCraft: failed to open shared memory", t);
 		}
 	}
