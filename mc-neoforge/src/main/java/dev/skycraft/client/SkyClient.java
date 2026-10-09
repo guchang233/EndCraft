@@ -206,9 +206,31 @@ public final class SkyClient {
 		}
 	}
 
+	// Create and Aeronautics run out of heap below about 3 GB; launchers that size memory
+	// automatically can hand out 512 MB while Endfield is running.
+	private static final long LOW_MEMORY_BYTES = 2900L << 20;
+	private static boolean warnedDuplicate, warnedMemory;
+
+	/** Setup problems the player can't see in a hidden window's log: say them in game, once. */
+	private static void warnSetupOnce(Minecraft minecraft) {
+		if (SkyLink.duplicate() && !warnedDuplicate) {
+			warnedDuplicate = true;
+			net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(minecraft.getToasts(),
+				net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+				net.minecraft.network.chat.Component.literal("EndCraft"),
+				net.minecraft.network.chat.Component.translatable("message.endcraft.duplicate"));
+		}
+		long max = Runtime.getRuntime().maxMemory();
+		if (!warnedMemory && linked && minecraft.player != null && max < LOW_MEMORY_BYTES) {
+			warnedMemory = true;
+			minecraft.gui.getChat().addMessage(net.minecraft.network.chat.Component.translatable("message.endcraft.low_memory", max >> 20));
+		}
+	}
+
 	/** Called at the end of every client tick. */
 	public static void clientTick(Minecraft minecraft) {
 		MirrorWorld.tick(minecraft);
+		warnSetupOnce(minecraft);
 
 		SkyDigClient.tick(minecraft);
 		freezeWhileUnlinked(minecraft);

@@ -1,5 +1,7 @@
 {
   "entity.skycraft.skyrim_actor": "Skyrim NPC",
   "key.categories.endcraft": "EndCraft",
-  "key.endcraft.host_terrain": "Show host terrain triangles"
+  "key.endcraft.host_terrain": "Show host terrain triangles",
+  "message.endcraft.duplicate": "Another Minecraft is already bridged to Endfield; this one will not link. Close one of them.",
+  "message.endcraft.low_memory": "[EndCraft] Minecraft only has %s MB of memory and may stutter or run out. Set game memory to 4096 MB in your launcher."
 }

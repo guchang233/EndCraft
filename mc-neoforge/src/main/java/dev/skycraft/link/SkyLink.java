@@ -41,6 +41,9 @@ public final class SkyLink {
 	private static final MethodHandle QUERY_PERFORMANCE_FREQUENCY;
 	private static final MethodHandle CREATE_MUTEX;
 	private static MemorySegment runningMutex;
+	// Another bridged Minecraft already holds the mutex: two clients writing one mapping fight over
+	// the player, so this one stays unlinked.
+	private static boolean duplicate;
 	private static final MemorySegment QPC_OUT = Arena.global().allocate(JAVA_LONG);
 
 	static {
@@ -58,7 +61,8 @@ public final class SkyLink {
 		GET_CURRENT_PROCESS_ID = linker.downcallHandle(k32.find("GetCurrentProcessId").orElseThrow(), FunctionDescriptor.of(JAVA_INT));
 		QUERY_PERFORMANCE_COUNTER = linker.downcallHandle(k32.find("QueryPerformanceCounter").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS));
 		QUERY_PERFORMANCE_FREQUENCY = linker.downcallHandle(k32.find("QueryPerformanceFrequency").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS));
-		CREATE_MUTEX = linker.downcallHandle(k32.find("CreateMutexW").orElseThrow(), FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, ADDRESS));
+		CREATE_MUTEX = linker.downcallHandle(k32.find("CreateMutexW").orElseThrow(), FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, ADDRESS),
+			Linker.Option.captureCallState("GetLastError"));
 	}
 
 	/**
@@ -72,7 +76,11 @@ public final class SkyLink {
 		}
 		try (Arena arena = Arena.ofConfined()) {
 			MemorySegment name = arena.allocateFrom(MAPPING_NAME + "_minecraft", StandardCharsets.UTF_16LE);
-			runningMutex = (MemorySegment) CREATE_MUTEX.invokeExact(MemorySegment.NULL, 0, name);
+			runningMutex = (MemorySegment) CREATE_MUTEX.invokeExact(OPEN_STATE, MemorySegment.NULL, 0, name);
+			if ((int) LAST_ERROR.get(OPEN_STATE, 0L) == 183) {
+				duplicate = true;
+				SkyCraft.LOG.warn("EndCraft: another Minecraft is already bridged to Endfield; this one will not link. Close one of them.");
+			}
 		} catch (Throwable t) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't create the running-Minecraft mutex", t);
 		}
@@ -102,6 +110,11 @@ public final class SkyLink {
 		return generation;
 	}
 
+	/** True when another bridged Minecraft was already running at startup, so this one never links. */
+	public static synchronized boolean duplicate() {
+		return duplicate;
+	}
+
 	/** Process id of the Skyrim we're linked to (0 before the first link). */
 	public static synchronized int skyrimPid() {
 		return skyrimPid;
@@ -123,7 +136,7 @@ public final class SkyLink {
 
 	/** Try to open the mapping at most once a second. Call regularly from the render thread. */
 	public static synchronized void poll() {
-        if (!Boolean.getBoolean("endcraft.allowHostConnection")) return;
+        if (!Boolean.getBoolean("endcraft.allowHostConnection") || duplicate) return;
 		if (shm != null) {
             long beat=(long)LONG.getAcquire(shm,OFF_HEADER+H_SKYRIM_HEARTBEAT);
             long now=tickCount();

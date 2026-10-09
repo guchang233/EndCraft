@@ -17,8 +17,9 @@ UPSTREAM = {
 
 
 def archive_source(output, version):
+    # A tarball, so the source never shows up in Better-Endfield's module ZIP picker.
     prefix = f'EndCraft-{version}/'
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as target:
+    with tarfile.open(output, 'w:gz') as target:
         for directory, revision in [('.', 'HEAD'), *UPSTREAM.items()]:
             repository = ROOT / directory
             archive = subprocess.check_output(['git', '-C', str(repository), 'archive', revision])
@@ -28,7 +29,8 @@ def archive_source(output, version):
                         continue
                     relative = member.name if directory == '.' else directory + '/' + member.name
                     stream = source.extractfile(member)
-                    target.writestr(prefix + relative, stream.read())
+                    member.name = prefix + relative
+                    target.addfile(member, stream)
 
 
 def main():
@@ -53,13 +55,13 @@ def main():
     if not probe.is_file():
         raise SystemExit('Build the shared-memory module (endcraft.probe) first.')
 
-    def module_package(identity, library, name, configuration):
+    def module_package(identity, library, name, configuration, dependencies):
         # Better-Endfield's manager rejects manifests without an author.
         path = output / f'EndCraft-{identity.removeprefix("endcraft.")}-{version}-win-x64.zip'
         manifest = {
             'format': 1, 'abi': 1, 'id': identity, 'version': version, 'name': name, 'author': 'EndCraft project',
             'libraries': {'windows-x64': f'native/windows-x64/{identity}.dll'},
-            'dependencies': [], 'default_configuration': configuration,
+            'dependencies': dependencies, 'default_configuration': configuration,
         }
         with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.writestr('module.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'))
@@ -70,11 +72,12 @@ def main():
 
     # The gameplay module only opens the shared memory; endcraft.probe creates it, so both are required.
     # auto_enable starts the bridge on entering the game.
-    module_zip = module_package(module, dll, 'EndCraft ' + version, {'auto_enable': True})
-    probe_zip = module_package('endcraft.probe', probe, 'EndCraft shared memory ' + version, {})
+    # Declaring the dependency makes Better-Endfield report a missing shared-memory module.
+    module_zip = module_package(module, dll, 'EndCraft ' + version, {'auto_enable': True}, ['endcraft.probe'])
+    probe_zip = module_package('endcraft.probe', probe, 'EndCraft shared memory ' + version, {}, [])
     shutil.copy2(jar, output / jar.name)
     shutil.copy2(neo_jar, output / neo_jar.name)
-    source_zip = output / f'EndCraft-{version}-source.zip'
+    source_zip = output / f'EndCraft-{version}-source.tar.gz'
     archive_source(source_zip, version)
     files = [module_zip, probe_zip, output / jar.name, output / neo_jar.name, source_zip]
     checksum = output / 'SHA256SUMS.txt'

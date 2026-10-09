@@ -1,4 +1,6 @@
 {
   "key.categories.endcraft": "EndCraft",
-  "key.endcraft.host_terrain": "显示终末地地形三角面"
+  "key.endcraft.host_terrain": "显示终末地地形三角面",
+  "message.endcraft.duplicate": "已有另一个 MC 连接着终末地，这个 MC 不会连接。请关闭其中一个。",
+  "message.endcraft.low_memory": "[EndCraft] MC 只分配到 %s MB 内存，可能卡顿或内存溢出。请在启动器中把游戏内存手动设为 4096 MB。"
 }
