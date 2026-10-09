@@ -83,6 +83,94 @@ public final class SkyNet {
 		}
 	}
 
+	/**
+	 * Server -> LAN guest: the host's terrain changed completely ({@code epoch}); drop what the
+	 * guest has. Guests without their own host link collide with and see the host's terrain.
+	 */
+	public record TerrainClear(int epoch) implements CustomPacketPayload {
+		public static final Type<TerrainClear> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "terrain_clear"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, TerrainClear> CODEC = StreamCodec.composite(ByteBufCodecs.INT, TerrainClear::epoch, TerrainClear::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Server -> LAN guest: the 8x8x8 collision voxels of every block in a box (SkyCollision.RawRegion). */
+	public record TerrainRegion(int epoch, int[] bounds, long[] positions, long[] bits) implements CustomPacketPayload {
+		public static final Type<TerrainRegion> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "terrain_region"));
+		// Per block: its position, then 2 bits per voxel layer (0 empty, 1 full, 2 as sent) and the
+		// layers sent as they are. Solid ground below the surface is mostly full layers.
+		public static final StreamCodec<RegistryFriendlyByteBuf, TerrainRegion> CODEC = StreamCodec.of((buf, region) -> {
+			buf.writeInt(region.epoch());
+			for (int value : region.bounds()) buf.writeInt(value);
+			buf.writeVarInt(region.positions().length);
+			for (int i = 0; i < region.positions().length; i++) {
+				buf.writeLong(region.positions()[i]);
+				int mask = 0;
+				for (int y = 0; y < 8; y++) {
+					long layer = region.bits()[i * 8 + y];
+					mask |= (layer == 0L ? 0 : layer == -1L ? 1 : 2) << (y * 2);
+				}
+				buf.writeShort(mask);
+				for (int y = 0; y < 8; y++) {
+					if ((mask >>> (y * 2) & 3) == 2) buf.writeLong(region.bits()[i * 8 + y]);
+				}
+			}
+		}, buf -> {
+			int epoch = buf.readInt();
+			int[] bounds = new int[6];
+			for (int i = 0; i < 6; i++) bounds[i] = buf.readInt();
+			int count = buf.readVarInt();
+			if (count < 0 || count > buf.readableBytes() / 10) throw new IllegalArgumentException("terrain region too large");
+			long[] positions = new long[count];
+			long[] bits = new long[count * 8];
+			for (int i = 0; i < count; i++) {
+				positions[i] = buf.readLong();
+				int mask = buf.readUnsignedShort();
+				for (int y = 0; y < 8; y++) {
+					int kind = mask >>> (y * 2) & 3;
+					bits[i * 8 + y] = kind == 0 ? 0L : kind == 1 ? -1L : buf.readLong();
+				}
+			}
+			return new TerrainRegion(epoch, bounds, positions, bits);
+		});
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Server -> LAN guest: the exact surface triangles of one terrain region (SkyCollision.RawTris). */
+	public record TerrainTris(int epoch, int minX, int minY, int minZ, float[] vertices, int[] flags) implements CustomPacketPayload {
+		public static final Type<TerrainTris> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SkyCraft.MOD_ID, "terrain_tris"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, TerrainTris> CODEC = StreamCodec.of((buf, tris) -> {
+			buf.writeInt(tris.epoch());
+			buf.writeInt(tris.minX());
+			buf.writeInt(tris.minY());
+			buf.writeInt(tris.minZ());
+			buf.writeVarInt(tris.flags().length);
+			for (float value : tris.vertices()) buf.writeFloat(value);
+			for (int value : tris.flags()) buf.writeInt(value);
+		}, buf -> {
+			int epoch = buf.readInt(), minX = buf.readInt(), minY = buf.readInt(), minZ = buf.readInt();
+			int count = buf.readVarInt();
+			if (count < 0 || count > buf.readableBytes() / 40) throw new IllegalArgumentException("terrain triangles too large");
+			float[] vertices = new float[count * 9];
+			for (int i = 0; i < vertices.length; i++) vertices[i] = buf.readFloat();
+			int[] flags = new int[count];
+			for (int i = 0; i < count; i++) flags[i] = buf.readInt();
+			return new TerrainTris(epoch, minX, minY, minZ, vertices, flags);
+		});
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
     public static void register(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar("12");
         registrar.playToServer(Hurt.TYPE, Hurt.CODEC, (payload, context) -> context.enqueueWork(() ->
@@ -92,6 +180,19 @@ public final class SkyNet {
         registrar.playToServer(DigReveal.TYPE, DigReveal.CODEC, (payload, context) -> context.enqueueWork(() ->
             SkyDig.reveal((ServerPlayer) context.player(), payload.world(), payload.cells(), payload.materials().stream().mapToInt(Integer::intValue).toArray())));
         registrar.playToClient(Died.TYPE, Died.CODEC, (payload, context) -> context.enqueueWork(() -> dev.skycraft.client.SkyClient.requestRecovery()));
+        // A guest with its own host link already has terrain from it; only plain LAN guests take the host's.
+        registrar.playToClient(TerrainClear.TYPE, TerrainClear.CODEC, (payload, context) -> {
+            if (!dev.skycraft.link.SkyLink.active()) dev.skycraft.world.SkyCollision.acceptClear(payload.epoch());
+        });
+        registrar.playToClient(TerrainRegion.TYPE, TerrainRegion.CODEC, (payload, context) -> {
+            int[] b = payload.bounds();
+            if (!dev.skycraft.link.SkyLink.active())
+                dev.skycraft.world.SkyCollision.acceptRegion(payload.epoch(), b[0], b[1], b[2], b[3], b[4], b[5], payload.positions(), payload.bits());
+        });
+        registrar.playToClient(TerrainTris.TYPE, TerrainTris.CODEC, (payload, context) -> {
+            if (!dev.skycraft.link.SkyLink.active())
+                dev.skycraft.world.SkyCollision.acceptTris(payload.epoch(), payload.minX(), payload.minY(), payload.minZ(), payload.vertices(), payload.flags());
+        });
     }
 
 	/** True if this player plays on this machine (their Skyrim is on the shared-memory link). */

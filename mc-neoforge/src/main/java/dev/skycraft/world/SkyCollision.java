@@ -51,6 +51,17 @@ public final class SkyCollision {
 	// Physics engines with their own static terrain (Sable) mirror the voxels: bounds of a changed
 	// region as {minX, minY, minZ, maxX, maxY, maxZ}, or null when everything was cleared.
 	private static final java.util.List<java.util.function.Consumer<int[]>> VOXEL_LISTENERS = new java.util.concurrent.CopyOnWriteArrayList<>();
+	/**
+	 * The messages as received, so the host's server can send the same terrain to LAN guests
+	 * (SkyTerrainSync). Voxel messages are keyed by their min corner, triangles by region.
+	 */
+	public record RawRegion(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, long[] positions, long[] bits, long revision) {
+	}
+	public record RawTris(int minX, int minY, int minZ, float[] vertices, int[] flags, long revision) {
+	}
+	private static final ConcurrentHashMap<Long, RawRegion> RAW_REGIONS = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<Long, RawTris> RAW_TRIS = new ConcurrentHashMap<>();
+	private static final java.util.concurrent.atomic.AtomicLong REVISION = new java.util.concurrent.atomic.AtomicLong();
 	private static Thread consumer;
 
 	private SkyCollision() {
@@ -62,6 +73,38 @@ public final class SkyCollision {
 
 	public static @Nullable VoxelShape shapeAt(int x, int y, int z) {
 		return SHAPES.isEmpty() ? null : SHAPES.get(BlockPos.asLong(x, y, z));
+	}
+
+	public static java.util.Map<Long, RawRegion> rawRegions() {
+		return java.util.Collections.unmodifiableMap(RAW_REGIONS);
+	}
+
+	public static java.util.Map<Long, RawTris> rawTris() {
+		return java.util.Collections.unmodifiableMap(RAW_TRIS);
+	}
+
+	public static int epoch() {
+		return epoch;
+	}
+
+	/** A LAN guest's terrain, as the host's server sent it (SkyNet.TerrainRegion). */
+	public static synchronized void acceptRegion(int msgEpoch, int minX, int minY, int minZ, int maxX, int maxY, int maxZ, long[] positions, long[] bits) {
+		adoptEpochIfFresh(msgEpoch);
+		if (msgEpoch == epoch) {
+			applyRegion(minX, minY, minZ, maxX, maxY, maxZ, positions, bits);
+		}
+	}
+
+	public static synchronized void acceptTris(int msgEpoch, int minX, int minY, int minZ, float[] vertices, int[] flags) {
+		adoptEpochIfFresh(msgEpoch);
+		if (msgEpoch == epoch) {
+			applyTris(minX, minY, minZ, vertices, flags);
+		}
+	}
+
+	/** The host's world changed, or a guest left the server ({@code -1}: join whatever comes next). */
+	public static synchronized void acceptClear(int newEpoch) {
+		clear(newEpoch);
 	}
 
 	/** Called on the collision thread after the stored voxels change; see VOXEL_LISTENERS. */
@@ -287,6 +330,8 @@ public final class SkyCollision {
 		GHOSTS.clear();
 		TRI_HASH.clear();
 		KNOWN_REGIONS.clear();
+		RAW_REGIONS.clear();
+		RAW_TRIS.clear();
 		epoch = newEpoch;
 		for (var listener : VOXEL_LISTENERS) listener.accept(null);
 		SkyCraft.LOG.info("SkyCraft: collision cleared (epoch {})", newEpoch);
@@ -305,20 +350,28 @@ public final class SkyCollision {
 		if (msgEpoch != epoch) {
 			return; // stale region from before a world change
 		}
-
-		// Build the new shapes first so readers never see a half-empty region.
-		java.util.HashMap<Long, VoxelShape> fresh = new java.util.HashMap<>(count * 2);
-		java.util.HashMap<Long, Integer> freshFill = new java.util.HashMap<>(count * 2);
+		long[] positions = new long[count];
+		long[] bits = new long[count * 8];
 		long e = p + COL_REGION_HEADER_BYTES;
 		for (int i = 0; i < count; i++, e += COL_BLOCK_BYTES) {
-			int x = s.get(JAVA_INT, e);
-			int y = s.get(JAVA_INT, e + 4);
-			int z = s.get(JAVA_INT, e + 8);
-			VoxelShape shape = buildShape(s, e + 16);
+			positions[i] = BlockPos.asLong(s.get(JAVA_INT, e), s.get(JAVA_INT, e + 4), s.get(JAVA_INT, e + 8));
+			for (int y = 0; y < 8; y++) {
+				bits[i * 8 + y] = s.get(JAVA_LONG, e + 16 + y * 8L);
+			}
+		}
+		applyRegion(minX, minY, minZ, maxX, maxY, maxZ, positions, bits);
+	}
+
+	/** Replaces every block shape inside the bounds; {@code bits} holds 8 layers per position. */
+	private static void applyRegion(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, long[] positions, long[] bits) {
+		// Build the new shapes first so readers never see a half-empty region.
+		java.util.HashMap<Long, VoxelShape> fresh = new java.util.HashMap<>(positions.length * 2);
+		java.util.HashMap<Long, Integer> freshFill = new java.util.HashMap<>(positions.length * 2);
+		for (int i = 0; i < positions.length; i++) {
+			VoxelShape shape = buildShape(bits, i * 8);
 			if (shape != null) {
-				long key = BlockPos.asLong(x, y, z);
-				fresh.put(key, shape);
-				freshFill.put(key, fillInfo(s, e + 16));
+				fresh.put(positions[i], shape);
+				freshFill.put(positions[i], fillInfo(bits, i * 8));
 			}
 		}
 
@@ -345,6 +398,7 @@ public final class SkyCollision {
 				}
 			}
 		}
+		RAW_REGIONS.put(BlockPos.asLong(minX, minY, minZ), new RawRegion(minX, minY, minZ, maxX, maxY, maxZ, positions, bits, REVISION.incrementAndGet()));
 		for (var listener : VOXEL_LISTENERS) listener.accept(new int[] {minX, minY, minZ, maxX, maxY, maxZ});
 	}
 
@@ -358,24 +412,34 @@ public final class SkyCollision {
 		if (msgEpoch != epoch) {
 			return;
 		}
-		SkyTri[] tris = new SkyTri[count];
-		java.util.List<SkyTri> ghosts = new java.util.ArrayList<>();
-		float[] v = new float[9];
-		int kept = 0;
-		long hash = count;
+		float[] vertices = new float[count * 9];
+		int[] flags = new int[count];
 		long e = p + COL_REGION_HEADER_BYTES;
 		for (int i = 0; i < count; i++, e += COL_TRI_BYTES) {
 			for (int k = 0; k < 9; k++) {
-				v[k] = s.get(JAVA_FLOAT, e + k * 4L);
-				hash = hash * 31 + Float.floatToRawIntBits(v[k]);
+				vertices[i * 9 + k] = s.get(JAVA_FLOAT, e + k * 4L);
 			}
-			int flags = s.get(JAVA_INT, e + 36);
-			hash = hash * 31 + flags;
-			SkyTri t = new SkyTri(v, 0, flags);
+			flags[i] = s.get(JAVA_INT, e + 36);
+		}
+		applyTris(minX, minY, minZ, vertices, flags);
+	}
+
+	private static void applyTris(int minX, int minY, int minZ, float[] vertices, int[] flags) {
+		int count = flags.length;
+		SkyTri[] tris = new SkyTri[count];
+		java.util.List<SkyTri> ghosts = new java.util.ArrayList<>();
+		int kept = 0;
+		long hash = count;
+		for (int i = 0; i < count; i++) {
+			for (int k = 0; k < 9; k++) {
+				hash = hash * 31 + Float.floatToRawIntBits(vertices[i * 9 + k]);
+			}
+			hash = hash * 31 + flags[i];
+			SkyTri t = new SkyTri(vertices, i * 9, flags[i]);
 			if (t.degenerate()) {
 				continue;
 			}
-			if ((flags & TRI_GHOST) != 0) {
+			if ((flags[i] & TRI_GHOST) != 0) {
 				ghosts.add(t);
 			} else {
 				tris[kept++] = t;
@@ -391,6 +455,7 @@ public final class SkyCollision {
 		Long before = TRI_HASH.put(region, hash);
 		if (before == null || before != hash) {
 			CHANGED.add(BlockPos.asLong(minX, minY, minZ));
+			RAW_TRIS.put(region, new RawTris(minX, minY, minZ, vertices, flags, REVISION.incrementAndGet()));
 		}
 	}
 
@@ -402,12 +467,12 @@ public final class SkyCollision {
 		return n;
 	}
 
-	private static int fillInfo(MemorySegment s, long bitsOff) {
+	private static int fillInfo(long[] bits, int offset) {
 		int count = 0;
 		int info = 0;
 		int top = 0;
 		for (int y = 0; y < 8; y++) {
-			long layer = s.get(JAVA_LONG, bitsOff + y * 8L);
+			long layer = bits[offset + y];
 			count += Long.bitCount(layer);
 			if (layer != 0) {
 				info |= y < 4 ? FILL_LOWER : FILL_UPPER;
@@ -417,12 +482,12 @@ public final class SkyCollision {
 		return info | count | top << FILL_TOP_SHIFT;
 	}
 
-	private static @Nullable VoxelShape buildShape(MemorySegment s, long bitsOff) {
+	private static @Nullable VoxelShape buildShape(long[] bits, int offset) {
 		boolean any = false;
 		boolean full = true;
 		long[] layers = new long[8];
 		for (int y = 0; y < 8; y++) {
-			layers[y] = s.get(JAVA_LONG, bitsOff + y * 8L);
+			layers[y] = bits[offset + y];
 			any |= layers[y] != 0;
 			full &= layers[y] == -1L;
 		}

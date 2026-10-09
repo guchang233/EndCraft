@@ -34,10 +34,12 @@ public final class SkyCraft {
         });
         modBus.addListener(dev.skycraft.net.SkyNet::register);
         SkyCombat.init(modBus);
+        dev.skycraft.platform.ServerTickEvents.END_SERVER_TICK.register(dev.skycraft.net.SkyTerrainSync::tick);
         NeoForge.EVENT_BUS.addListener((ServerStartedEvent e) -> configureServer(e.getServer()));
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent e) -> {
             if (e.getEntity() instanceof ServerPlayer p && p.server.getWorldData().getLevelName().equals(WORLD_NAME)) {
                 if (dev.skycraft.net.SkyNet.isHost(p)) p.server.getPlayerList().op(p.getGameProfile());
+                else bringToHost(p);
                 if (p.getInventory().isEmpty()) {
                     for (var item : new net.minecraft.world.item.Item[]{Items.DIAMOND_SWORD, Items.DIAMOND_PICKAXE, Items.OAK_PLANKS, Items.GLASS, Items.WATER_BUCKET, Items.FIREWORK_ROCKET, Items.TNT, Items.OAK_BOAT, Items.MINECART})
                         p.getInventory().add(new ItemStack(item, item.getDefaultMaxStackSize()));
@@ -45,7 +47,26 @@ public final class SkyCraft {
                 }
             }
         });
+        NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerRespawnEvent e) -> {
+            if (e.getEntity() instanceof ServerPlayer p && !e.isEndConquered() && p.server.getWorldData().getLevelName().equals(WORLD_NAME)
+                && !dev.skycraft.net.SkyNet.isHost(p)) bringToHost(p);
+        });
         if (FMLEnvironment.dist == Dist.CLIENT) dev.skycraft.client.SkyCraftClient.initialize(modBus);
+    }
+
+    /**
+     * The bridge world is void except where the host's terrain is, which follows the host: a LAN
+     * guest joins (and respawns) beside the host instead of at the world spawn.
+     */
+    private static void bringToHost(ServerPlayer guest) {
+        for (ServerPlayer host : guest.server.getPlayerList().getPlayers()) {
+            if (host != guest && dev.skycraft.net.SkyNet.isHost(host)) {
+                guest.teleportTo(host.serverLevel(), host.getX(), host.getY() + 0.1, host.getZ(), host.getYRot(), 0.0F);
+                guest.fallDistance = 0.0F;
+                LOG.info("SkyCraft: LAN guest {} placed beside the host", guest.getName().getString());
+                return;
+            }
+        }
     }
 
     private static void configureServer(MinecraftServer server) {

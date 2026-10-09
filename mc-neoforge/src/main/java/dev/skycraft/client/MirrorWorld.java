@@ -29,10 +29,10 @@ public final class MirrorWorld {
 	}
 
 	/**
-	 * The address in config/skycraft.properties ({@code join=abc-def.e4mc.link}), if any. Written
-	 * with the template below the first time, so there's something to fill in.
+	 * config/skycraft.properties, written with the template below the first time so there's
+	 * something to fill in.
 	 */
-	private static @org.jspecify.annotations.Nullable String joinAddress(Minecraft minecraft) {
+	static java.util.Properties properties(Minecraft minecraft) {
 		java.nio.file.Path file = minecraft.gameDirectory.toPath().resolve("config").resolve("skycraft.properties");
 		java.util.Properties props = new java.util.Properties();
 		try {
@@ -43,6 +43,12 @@ public final class MirrorWorld {
 					# To play in a friend's world instead of your own: put their address after join=
 					# (the link e4mc shows them when they open their world to LAN), then restart Minecraft.
 					join=
+					# EndCraft LAN: open the bridge world to LAN when it loads (or type /endcraft lan).
+					lan=false
+					# 0 picks a free port.
+					lan_port=0
+					# false lets guests join without Minecraft account verification.
+					lan_online_mode=true
 					""");
 			}
 			try (var in = java.nio.file.Files.newBufferedReader(file)) {
@@ -50,9 +56,13 @@ public final class MirrorWorld {
 			}
 		} catch (java.io.IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't read {}", file, e);
-			return null;
 		}
-		String join = props.getProperty("join", "").trim();
+		return props;
+	}
+
+	/** The address in config/skycraft.properties ({@code join=abc-def.e4mc.link}), if any. */
+	private static @org.jspecify.annotations.Nullable String joinAddress(Minecraft minecraft) {
+		String join = properties(minecraft).getProperty("join", "").trim();
 		return join.isEmpty() ? null : join;
 	}
 

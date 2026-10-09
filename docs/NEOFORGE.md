@@ -90,6 +90,31 @@ python tools/fetch-neoforge-mods.py
 
 日志在 `reports/neoforge-startup.log` 和 `mc-neoforge/run/logs/latest.log`。首次启动还会下载 1.21.1 的资产；构建成功不代表资产已全部缓存。
 
+## 局域网联机（实验）
+
+一台电脑运行终末地和桥接客户端作为主机，其他人用普通的 NeoForge 1.21.1 客户端加入同一个世界。复用 MC 自带的局域网联机，不需要其他人运行终末地。
+
+**主机**：进入桥接存档后，按 T 打开 MC 聊天并输入：
+
+```text
+/endcraft lan                 # 开放局域网，验证正版账号
+/endcraft lan offline         # 不验证正版账号（本机连不上 Mojang 验证服务器时使用）
+/endcraft lan offline 25565   # 指定端口
+```
+
+聊天框会显示端口和本机局域网地址。也可以在 `mc-neoforge/run/config/skycraft.properties` 写入 `lan=true`（以及可选的 `lan_port`、`lan_online_mode=false`），进入存档后自动开放。
+
+**访客**：安装与主机相同的 NeoForge 21.1.247、Create、Aeronautics、Sable、Create: Flight Control 和 EndCraft NeoForge 客户端 jar，在多人游戏中选择局域网世界，或直接连接主机显示的地址。
+
+| 效果 | 说明 |
+|---|---|
+| 出生位置 | 访客加入或重生时出现在主机玩家身边，不会掉进虚空世界 |
+| 地形碰撞 | 主机服务器把终末地地形的碰撞体素和三角面，按访客位置（水平 96 格内）分批同步给访客，访客可以站在终末地地形上 |
+| 地形显示 | 访客的 MC 把收到的三角面按材质着色，显示为低多边形地面 |
+| 主机看到访客 | 访客的 MC 角色、放置的方块和机械动力装置照常绘制到终末地场景 |
+
+限制：地形只来自主机终末地角色周围已加载的区域，访客走远后没有地形；终末地 NPC 在访客端不可见；访客不能看到终末地原生画面。**该功能已通过构建和单元测试，尚未实机联机验收。**
+
 ## 存档与回退
 
 不要把 `mc/run/saves` 的 26.3 存档复制给 1.21.1 打开。物品、数据组件和存档格式都存在差异，当前没有降级转换器。
