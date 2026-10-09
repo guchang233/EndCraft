@@ -49,25 +49,34 @@ def main():
         raise SystemExit('Commit the release sources before creating the corresponding source archive.')
     output = (args.output or ROOT / f'dist/release-{version}').resolve()
     output.mkdir(parents=True, exist_ok=True)
-    module_zip = output / f'EndCraft-{module.removeprefix("endcraft.")}-{version}-win-x64.zip'
-    manifest = {
-        'format': 1, 'abi': 1, 'id': module, 'version': version,
-        'name': 'EndCraft prototype ' + version,
-        'libraries': {'windows-x64': f'native/windows-x64/{module}.dll'},
-        'dependencies': [], 'default_configuration': {},
-    }
-    with zipfile.ZipFile(module_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
-        archive.write(dll, f'native/windows-x64/{module}.dll')
-        archive.writestr('module.json', json.dumps(manifest, indent=2))
-        for name in ('README.md', 'VERSION', 'LICENSE', 'mc/LICENSE', 'THIRD-PARTY-NOTICES.md'):
-            archive.write(ROOT / name, name)
-        for path in sorted((ROOT / 'docs').glob('*.md')):
-            archive.write(path, path.relative_to(ROOT).as_posix())
+    probe = ROOT / 'build/native/endcraft.probe.dll'
+    if not probe.is_file():
+        raise SystemExit('Build the shared-memory module (endcraft.probe) first.')
+
+    def module_package(identity, library, name, configuration):
+        # Better-Endfield's manager rejects manifests without an author.
+        path = output / f'EndCraft-{identity.removeprefix("endcraft.")}-{version}-win-x64.zip'
+        manifest = {
+            'format': 1, 'abi': 1, 'id': identity, 'version': version, 'name': name, 'author': 'EndCraft project',
+            'libraries': {'windows-x64': f'native/windows-x64/{identity}.dll'},
+            'dependencies': [], 'default_configuration': configuration,
+        }
+        with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('module.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'))
+            archive.write(library, f'native/windows-x64/{identity}.dll')
+            for extra in ('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md'):
+                archive.write(ROOT / extra, extra)
+        return path
+
+    # The gameplay module only opens the shared memory; endcraft.probe creates it, so both are required.
+    # auto_enable starts the bridge on entering the game.
+    module_zip = module_package(module, dll, 'EndCraft ' + version, {'auto_enable': True})
+    probe_zip = module_package('endcraft.probe', probe, 'EndCraft shared memory ' + version, {})
     shutil.copy2(jar, output / jar.name)
     shutil.copy2(neo_jar, output / neo_jar.name)
     source_zip = output / f'EndCraft-{version}-source.zip'
     archive_source(source_zip, version)
-    files = [module_zip, output / jar.name, output / neo_jar.name, source_zip]
+    files = [module_zip, probe_zip, output / jar.name, output / neo_jar.name, source_zip]
     checksum = output / 'SHA256SUMS.txt'
     checksum.write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n'
                                for path in files), encoding='utf-8')

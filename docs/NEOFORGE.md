@@ -8,7 +8,7 @@ EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，�
 
 | 组件 | 固定版本 |
 |---|---|
-| EndCraft Guest | `4.1.0` |
+| EndCraft Guest | `4.1.1` |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.247 |
 | Create | 6.0.10+mc1.21.1 |
@@ -54,7 +54,7 @@ python tools/fetch-neoforge-mods.py
 
 产物：
 
-- `mc-neoforge/build/libs/endcraft-neoforge-guest-4.1.0.jar`
+- `mc-neoforge/build/libs/endcraft-neoforge-guest-4.1.1.jar`
 - 同目录的 `-sources.jar`
 - `mc-neoforge/build/reports/tests/test/index.html`：测试报告
 

@@ -11,7 +11,7 @@ EndCraft 4.1 起，NeoForge 1.21.1 客户端可以复用 Minecraft 自带的局�
 
 ## 准备
 
-所有人使用**同一版本**的 EndCraft NeoForge 客户端 jar，以及相同的模组组合：NeoForge 21.1.247、Create 6.0.10、Create Aeronautics 1.3.2、Sable 2.0.6、Create: Flight Control 0.7.7（版本固定在 `mc-neoforge/modpack.lock.json`）。版本不一致时，加入会被拒绝，提示“客户端缺少此服务端需要的网络通道”。
+所有人使用**同一版本**的 EndCraft NeoForge 客户端 jar，以及相同的模组组合：NeoForge 21.1.247 必需；Create 6.0.10、Create Aeronautics 1.3.2、Sable 2.0.6、Create: Flight Control 0.7.7 为可选，主机装了的话访客也要装相同版本（版本固定在 `mc-neoforge/modpack.lock.json`）。版本不一致时，加入会被拒绝，提示“客户端缺少此服务端需要的网络通道”。
 
 ## 主机：开放局域网
 
