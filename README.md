@@ -2,12 +2,14 @@
 
 **4.1.2 · Windows x64 · 实验性项目。** 在终末地的真实场景中使用 Minecraft 的角色、物品栏、方块、战斗、机械动力和航空学，支持 MC 局域网联机。两款游戏同时运行：MC 计算玩法，终末地显示场景。
 
+**目录**：[安装](#安装-412) · [加载方式](#加载方式) · [常用操作](#常用操作) · [限制与文档](#限制与文档) · [许可](#许可)
+
 ## 安装 4.1.2
 
 普通玩家使用发行附件即可，无需源码、Visual Studio 或 Python。
 
 > [!IMPORTANT]
-> - **须使用 Better-Endfield 3.5.4(4.0.0以下即可）**，不要升级。更新的版本关闭了「第三方模块」入口，无法导入 EndCraft。
+> - **须使用 Better-Endfield 3.5.4(4.0.0以下即可）**，不要升级。更新的版本关闭了「第三方模块」入口，无法导入 EndCraft。也可以改用 EFML 加载，见 [加载方式](#加载方式)。
 > - **Minecraft 需要自行下载和安装。** EndCraft 不附带 MC 本体、启动器、Java 或任何模组依赖，只提供终末地宿主模块和 MC 端模组 JAR；请自行购买正版 Minecraft，并用 PCL2、HMCL 等启动器安装。
 
 1. 安装终末地并确认能正常进入游戏，再安装 [Better-Endfield **3.5.4**](https://github.com/Dr-hydra/Better-Endfield/releases/tag/v3.5.4)，在管理器中设置游戏路径。
@@ -33,6 +35,23 @@ ZIP 导入管理器，JAR 放入 MC 的 `mods`，两者不要混用。只导入�
 源码安装过旧版的用户：游戏目录里的 `xinput1_4.dll` 是 EndCraft 旧加载器，Better-Endfield 启动时会提示“游戏目录已有未知 xinput1_4.dll”。关闭游戏后执行 `python tools/install-probe.py uninstall` 卸载旧加载器，再从 Better-Endfield 启动；继续使用旧加载器的按 [源码安装与升级说明](docs/INSTALL.md) 维护。两套加载器只保留一套，只启用一个 EndCraft 玩法模块（`endcraft.probe` 不算玩法模块，需同时启用）。
 
 4.1.0 用户：4.1.0 附件缺少共享内存模块，玩法模块还缺 `author` 字段导致无法导入，请改用 4.1.2 附件。终末地关闭或闪退后，MC 会自动保存并退出，不再留在后台。
+
+## 加载方式
+
+EndCraft 的两个 ZIP 是第三方模块，需要由模组加载器装进终末地。下面两种加载器任选其一：
+
+| 加载器 | 状态 | 说明 |
+|---|---|---|
+| [Better-Endfield 3.5.4](https://github.com/Dr-hydra/Better-Endfield/releases/tag/v3.5.4) | 推荐，已验证 | 上面的安装步骤使用它 |
+| [EFML](https://github.com/guchang233/EFML) | 实验性，尚未实机验证 | 基于 Better-Endfield 核心组件的独立模组加载器，与其第三方模块格式兼容 |
+
+**使用 EFML**（替代上面的第 1、3 步与第 6 步中的 Better-Endfield）：
+
+1. 从 [EFML 发行页](https://github.com/guchang233/EFML/releases/latest) 下载 `EFML-<版本>-Setup.exe` 并安装。首次运行时，它会自动查找游戏，并让你选择加载方式：「注入」（推荐）或「xinput 代理」。
+2. 在 EFML 的 **「模组」→「导入模组压缩包」** 中分别导入 `EndCraft-probe-…zip` 和 `EndCraft-gameplay34-…zip`，确认两个都已启用。
+3. 在 EFML 的 **「启动」** 页点击「启动游戏」。进入可移动场景后再启动 MC，其余步骤不变。「启动」页会实时显示两个模块的状态与日志，排查问题时可以先看这里。
+
+**两种加载器不能同时使用。** 如果之前在 Better-Endfield 中选择了「XInput自启动」，请先在 Better-Endfield 中卸载它（或改用其他加载方式），确保游戏目录里没有 Better-Endfield 的 `xinput1_4.dll`。否则 EFML 会提示游戏目录中已有其他加载器，并拒绝启动。换回 Better-Endfield 前，在 EFML 的「设置」中移除代理（如果安装过）。
 
 ## 常用操作
 
