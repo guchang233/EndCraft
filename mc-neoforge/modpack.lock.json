@@ -124,6 +124,8 @@
     "filename": "ysm-2.6.3-neoforge+mc1.21.1-release.jar",
     "url": "https://cdn.modrinth.com/data/86xjpqqS/versions/yLfwunzP/ysm-2.6.3-neoforge%2Bmc1.21.1-release.jar",
     "sha512": "937a0718a35a318be4d87f842800b22ceb04a9551003468dff816f24d11f754778225edd9c8ca61ab03f94a80d0e72fe84ca2f1bdbf98aee6a75f584d8e8378c",
+    "disabled": true,
+    "disabled_reason": "YSM 2.6.3 cannot load its native library on this machine (err: 54) and NeoForge stops the client on LoadingErrorScreen, so it blocks the bridge. Moved to libs-disabled/ until the runtime requirement is understood; drop these two fields and move the jar back to enable it.",
     "dependencies": [],
     "license_url": "https://modrinth.com/mod/yes-steve-model",
     "source_url": "https://modrinth.com/mod/yes-steve-model"

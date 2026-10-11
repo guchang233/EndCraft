@@ -13,6 +13,9 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     for item in lock:
         name = item['filename']
+        if item.get('disabled'):
+            print('Skipped disabled entry ' + name + ': ' + str(item.get('disabled_reason', '')), flush=True)
+            continue
         url_text = item.get('url')
         file = destination / name
         if url_text is None:

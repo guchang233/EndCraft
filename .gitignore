@@ -11,6 +11,7 @@ mc-neoforge/.gradle/
 mc-neoforge/build/
 mc-neoforge/run/
 mc-neoforge/libs/
+mc-neoforge/libs-disabled/
 reports/
 mc/logs/
 *.log

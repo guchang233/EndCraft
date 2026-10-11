@@ -25,16 +25,23 @@
 
 新增静态测试（不加载游戏）：四个模组的 Mixin 配置每个声明类可解析、锁文件与 `libs/` 目录双向一致（哈希逐件核对）、YSM GeckoLib 前置守卫。
 
-## 待实机验收
+## 已隔离：Yes Steve Model
 
-静态审计**不等于**游戏内兼容确认。以下各项需实测后再更新 [NEOFORGE](NEOFORGE.md)：
+YSM 2.6.3 在本机加载原生库失败（`err: 54`），NeoForge 因此停在 `LoadingErrorScreen`，**客户端无法进入世界**。为不影响其余模组，4.2.0 将其移到 `mc-neoforge/libs-disabled/`，锁文件里标记为 `disabled`（保留来源与哈希）。恢复方法：删掉锁文件里 ysm 条目的 `disabled` 与 `disabled_reason` 两行，把 jar 移回 `libs/`。
 
-- 四个模组随桥接客户端加载、进入桥接存档；
+GeckoLib 4.9.3 保留在锁文件中，恢复 YSM 后即可直接使用。
+
+## 实机结果（桥接模式）
+
+隔离 YSM 后重启，桥接完整建立：进入镜像世界、读到宿主世界 536116223、重发方块网格、玩家传送并切到第三人称。TaCZ、车万女仆、Maid Addition 三者均加载并运行。日志里只有 Veil 一个计算着色器编译错误（随后回退 legacy），未阻断启动。
+
+## 仍需逐项验收
+
 - 枪械射击/换弹的渲染捕获，以及 TaCZ 特效是否绕过捕获；
 - 女仆实体（含 GeckoLib 动画）经实体导出通道的显示；
-- YSM 玩家模型在第三人称 avatar 通道的表现；
 - Maid Addition 区块加载对导出预算与帧率的影响；
-- TLM 扫帚物理检查期间与终末地地形的穿模表现（模组主动跳过 collide 调用）。
+- TLM 扫帚物理检查期间与终末地地形的穿模表现；
+- YSM 恢复前需解决 `err: 54`（先排查 NVIDIA Overlay 与 Oray 向日葵驱动）。
 
 ## 使用提示
 

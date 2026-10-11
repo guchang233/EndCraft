@@ -148,6 +148,12 @@ class MixinTargetTest {
         "touhoulittlemaid-1.5.3-neoforge+mc1.21.1.jar", List.of("touhou_little_maid.mixins.json"),
         "maidaddition1.21.1-1.0.1-beta-all.jar", List.of("maidaddition.mixins.json"));
 
+    /** Disabled content mods stay audited: they live in libs-disabled/ until they can be restored. */
+    private static Path contentModJar(String filename) {
+        Path loaded = Path.of("libs", filename);
+        return Files.isRegularFile(loaded) ? loaded : Path.of("libs-disabled", filename);
+    }
+
     private com.google.gson.JsonObject readConfig(ZipFile zip, String config) throws Exception {
         var entry = zip.getEntry(config);
         assertNotNull(entry, "Missing mixin config in jar: " + config);
@@ -184,7 +190,7 @@ class MixinTargetTest {
     private Map<String, Set<String>> contentModMixinTargetClasses() throws Exception {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
-            try (var zip = new ZipFile(Path.of("libs", jarConfig.getKey()).toString())) {
+            try (var zip = new ZipFile(contentModJar(jarConfig.getKey()).toString())) {
                 Set<String> targets = new HashSet<>();
                 for (String config : jarConfig.getValue()) {
                     var json = readConfig(zip, config);
@@ -234,7 +240,7 @@ class MixinTargetTest {
 
     @Test void contentModMixinConfigurationsResolveEveryDeclaredMixinClass() throws Exception {
         for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
-            try (var zip = new ZipFile(Path.of("libs", jarConfig.getKey()).toString())) {
+            try (var zip = new ZipFile(contentModJar(jarConfig.getKey()).toString())) {
                 for (String config : jarConfig.getValue()) {
                     var json = readConfig(zip, config);
                     String pkg = json.get("package").getAsString();
@@ -270,11 +276,26 @@ class MixinTargetTest {
             "New shared mixin target classes need manual review before running: " + unreviewed);
     }
 
+    private static com.google.gson.JsonArray lockfile() throws Exception {
+        return JsonParser.parseString(Files.readString(Path.of("modpack.lock.json"))).getAsJsonArray();
+    }
+    private static boolean lockEntryDisabled(String project) throws Exception {
+        for (var item : lockfile()) {
+            var obj = item.getAsJsonObject();
+            if (obj.get("project").getAsString().equals(project))
+                return obj.has("disabled") && obj.get("disabled").getAsBoolean();
+        }
+        return false;
+    }
+
     @Test void everyLibsJarIsHashLockedAndEveryLockedArtifactIsPresent() throws Exception {
         Map<String, String> expected = new LinkedHashMap<>();
-        for (var item : JsonParser.parseString(Files.readString(Path.of("modpack.lock.json"))).getAsJsonArray()) {
+        List<String> disabled = new ArrayList<>();
+        for (var item : lockfile()) {
             var obj = item.getAsJsonObject();
-            expected.put(obj.get("filename").getAsString(), obj.get("sha512").getAsString());
+            String filename = obj.get("filename").getAsString();
+            if (obj.has("disabled") && obj.get("disabled").getAsBoolean()) { disabled.add(filename); continue; }
+            expected.put(filename, obj.get("sha512").getAsString());
         }
         for (var entry : expected.entrySet()) {
             var file = Path.of("libs", entry.getKey());
@@ -287,6 +308,10 @@ class MixinTargetTest {
             assertEquals(entry.getValue(), java.util.HexFormat.of().formatHex(digest.digest()),
                 "Locked artifact hash mismatch: " + entry.getKey());
         }
+        // A disabled entry is still locked and must stay on disk, only outside the loaded folder.
+        for (String filename : disabled)
+            assertTrue(Files.isRegularFile(Path.of("libs-disabled", filename)),
+                "Disabled artifact must stay on disk in libs-disabled: " + filename);
         try (var files = Files.list(Path.of("libs"))) {
             for (var file : files.filter(p -> p.toString().endsWith(".jar")).toList()) {
                 assertTrue(expected.containsKey(file.getFileName().toString()), "Unlocked jar in libs: " + file);
@@ -295,18 +320,24 @@ class MixinTargetTest {
     }
 
     @Test void yesSteveModelStaysWithoutBundledGeckoLibWhileTheDependencyStaysLocked() throws Exception {
+        String ysmJar = "ysm-2.6.3-neoforge+mc1.21.1-release.jar";
+        boolean locked = false;
+        for (var item : lockfile()) {
+            if (item.getAsJsonObject().get("project").getAsString().equals("geckolib")) locked = true;
+        }
+        assertTrue(locked, "geckolib must stay in the lockfile while YSM loads it as an external dependency");
+        if (lockEntryDisabled("yes-steve-model")) {
+            assertTrue(Files.isRegularFile(Path.of("libs-disabled", ysmJar)),
+                "Disabled YSM must stay on disk in libs-disabled/ so it can be restored");
+            return;
+        }
         boolean bundled = false;
-        try (var zip = new ZipFile(Path.of("libs", "ysm-2.6.3-neoforge+mc1.21.1-release.jar").toString())) {
+        try (var zip = new ZipFile(Path.of("libs", ysmJar).toString())) {
             for (var entries = zip.entries(); entries.hasMoreElements(); ) {
                 String name = entries.nextElement().getName();
                 if (name.startsWith("software/bernie/") && name.endsWith(".class")) { bundled = true; break; }
             }
         }
         assertFalse(bundled, "YSM now bundles GeckoLib; the externally locked geckolib artifact can be dropped");
-        boolean locked = false;
-        for (var item : JsonParser.parseString(Files.readString(Path.of("modpack.lock.json"))).getAsJsonArray()) {
-            if (item.getAsJsonObject().get("project").getAsString().equals("geckolib")) locked = true;
-        }
-        assertTrue(locked, "geckolib must stay in the lockfile while YSM loads it as an external dependency");
     }
 }

@@ -47,12 +47,27 @@ EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，�
 - **Veil**：TaCZ 官方标注的已知冲突（与 Veil 3.1.2 之前）不适用——Sable 内嵌 Veil 4.3.2 已修复；本项目的 `VeilPostMixin` 目标有效性由现有字节码审计测试覆盖。
 - **导出预算**：实体导出上限从 96 提高到 192（女仆、扫帚和枪械投射物很快占满旧预算）；方块实体预算 256 不变。
 
+### Yes Steve Model：阻断启动，已隔离
+
+实机启动时 YSM 在构造阶段抛异常（`Failed to load native lib` → `[YSM] Unsatisfied runtime environment: err: 54`），NeoForge 因此停在 `LoadingErrorScreen`，**整个客户端进不了世界**。它不是“功能缺失”，而是阻断启动，所以 4.2.0 把它从 `libs/` 移到 `libs-disabled/`，并在锁文件里标记为 `disabled`（保留哈希与来源，恢复时删掉 `disabled` 两行并把 jar 移回即可）。
+
+排查过的方向：`ysm-core.dll` 只依赖 KERNEL32/SHELL32/bcrypt，系统 VC 运行库齐全，不是缺依赖；`--enable-native-access` 已由启动参数放行。YSM 官方 issue #155 是同一错误码，归因于图形注入层；本机的 NVIDIA Overlay 与 Oray 驱动是下一步要排查的对象。
+
+GeckoLib 4.9.3 仍保留在锁文件中（YSM 一旦恢复就需要它）；`MixinTargetTest` 会检查被禁用的 jar 仍然留在 `libs-disabled/`，防止“禁用后文件被随手删掉”。
+
+### 实机结果（2026-10-12，桥接模式）
+
+隔离 YSM 后重启，桥接完整建立：进入镜像世界、读到宿主世界 536116223、重发方块网格、玩家传送到 `-18.67 66.52 -20.27` 并切到第三人称让宿主绘制史蒂夫。TaCZ、Touhou Little Maid、Maid Addition 三者在桥接中均加载并运行，没有产生加载错误。
+
+日志里唯一的错误是 `Failed to create shader veil:light/indirect_sphere: Failed to compile compute shader`（Veil 的某个计算着色器编译失败，随后回退 legacy 路径），没有阻断启动；它对本项目的导出画面是否有影响仍需单独确认。
+
 ### 已知语义交互与待实测项
 
 - TLM 扫帚做物理检查时跳过 `collide` 调用，此时扫帚不与本项目的终末地地形碰撞（可能穿地）——这是女仆模组的主动行为，不崩溃，待实测确认表现。
 - TaCZ 标注“特定条件下第一人称手部消失”，桥接模式不导出第一人称手臂，预期无影响。
-- 枪械射击、女仆动画与 YSM 模型都走标准实体渲染调度，网格捕获理论上有效，但 **GeckoLib 动画层的捕获效果、TaCZ 枪口的附加特效是否绕过捕获，必须实机验证**，不能只凭加载成功就认定兼容。
+- 枪械射击、换弹与女仆的 GeckoLib 动画走标准实体渲染调度，网格捕获理论上有效，但**是否真的被导出到终末地、有没有特效绕过捕获，需要逐项验证**，不能只凭加载成功就认定兼容。
 - Maid Addition 会让女仆加载周围区块，可能扩大进入导出预算的实体数量，需要实测帧率与预算表现。
+- YSM 恢复前需要解决 `err: 54`（先排查 NVIDIA Overlay 与 Oray 向日葵驱动）。
 
 ## 构建，不启动游戏
 
