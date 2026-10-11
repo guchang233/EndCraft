@@ -21,6 +21,10 @@
 | 鞘翅不展开 | 胸甲栏是否穿戴、是否已经离地 | 空中再按空格；先在高处开阔区域测试 |
 | NPC 不上船 | 类型／体型、距离、座位是否空闲 | 换普通体型、空座位及空旷位置；不是所有 NPC 都支持 |
 | TNT 没炸开原生岩石 | 是否只有 MC 方块／敌人效果、是否已取得原生炸弹样本 | 原生岩石接口未完成验收，不属于 3.0 保证功能 |
+| MC 启动报 `NoClassDefFoundError: software/bernie/geckolib/...` | `mc-neoforge/libs/` 是否缺 `geckolib-neoforge-1.21.1-4.9.3.jar` | 运行 `python tools/fetch-neoforge-mods.py` 重新校验补齐；YSM 需要这个外置前置 |
+| 枪械进游戏没有模型/材质 | 枪包 zip 是否已放入 `mc-neoforge/run/tacz/` | 放入后游戏内执行 `/tacz reload`；服务端数据与客户端资源都要有枪包 |
+| YSM 玩家还是默认皮肤 | 模型包是否放入 `mc-neoforge/run/ysm/` | 放入后 F3+T 重载资源；确认模型包与 YSM 2.6.3 版本匹配 |
+| 加入内容模组后启动崩溃（Mixin apply failed） | 崩溃报告里的 mixin 类名是否属于本项目或内容模组 | 先运行 `gradlew build`：`MixinTargetTest` 会在静态阶段报出新的共享注入目标；不要绕过测试直接删模组 |
 
 ## 读取诊断
 

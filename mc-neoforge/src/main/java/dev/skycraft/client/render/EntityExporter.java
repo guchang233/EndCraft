@@ -26,7 +26,9 @@ final class EntityExporter {
                 }
                 continue;
             }
-            if (++count > 96) continue;
+            // 4.2 raises the first-round cap: maids, brooms and gun projectiles fill the old 96
+            // budget quickly. Block entities keep their separate 256 budget.
+            if (++count > 192) continue;
             Vec3 position = entity.getPosition(partial).subtract(origin);
             dispatcher.render(entity, position.x, position.y, position.z, entity.getYRot(), partial, new PoseStack(), scene, dispatcher.getPackedLightCoords(entity, partial));
         }

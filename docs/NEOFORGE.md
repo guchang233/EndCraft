@@ -8,13 +8,18 @@ EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，�
 
 | 组件 | 固定版本 |
 |---|---|
-| EndCraft Guest | `4.1.2` |
+| EndCraft Guest | `4.2.0` |
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.247 |
 | Create | 6.0.10+mc1.21.1 |
 | Create Aeronautics | 1.3.2+mc1.21.1，bundled 文件 |
 | Sable | 2.0.6+mc1.21.1 |
 | Create: Flight Control | 0.7.7（代码 GPL-3.0，资源保留所有权利） |
+| GeckoLib | 4.9.3（YSM 的外置前置，锁定在 Modrinth 发布文件） |
+| TaCZ（1.21.1 NeoForge 移植） | 1.1.8-hotfix-r7 |
+| Yes Steve Model | 2.6.3-neoforge+mc1.21.1 |
+| Touhou Little Maid | 1.5.3-neoforge+mc1.21.1 |
+| Maid Addition | 1.0.1-beta（无发布主页，仅本地哈希锁定） |
 | Java | JDK 25；桥接类使用 Java 22 字节码和 Foreign Function & Memory API |
 | 宿主模块 | `endcraft.gameplay34`（F1/F3 转发）；`gameplay33` 仍可用，协议 12 |
 
@@ -30,6 +35,24 @@ EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，�
 - 默认独立启动不连接宿主；只有指定桥接选项才连接。两种桥接客户端启动脚本都有防重复写入检查。
 
 这些是实现和静态验证结果。**不把“代码已写”“模组依赖已下载”当成“游戏内兼容已确认”。**
+
+## 内容模组（4.2.0 实验性）
+
+4.2.0 在 NeoForge 客户端加入四个内容模组：TaCZ 枪械、Yes Steve Model 玩家模型、Touhou Little Maid 女仆与 Maid Addition 女仆区块加载辅助。它们随项目 JAR 一起放在 `mc-neoforge/libs/`，以 `runtimeOnly` 加载；来源、版本和 SHA-512 记录在 `modpack.lock.json`，其中四件对应 Modrinth 发布文件，`maidaddition` 无发布主页，脚本只校验本地文件哈希、不下载。`tools/fetch-neoforge-mods.py` 会校验全部九件。
+
+### 静态兼容审计（已完成）
+
+- **前置补齐**：YSM 2.6.3 既不内嵌 GeckoLib 类也无 jarjar 依赖声明，直接加载会在运行时因缺 GeckoLib 而失败。已锁定 GeckoLib 4.9.3（NeoForge 1.21.1）作为外置前置；Touhou Little Maid 自带 geckolib3 fork，Maid Addition 自带 apfloat/jgrapht，TaCZ 自带 luaj/bcel/simplebedrockmodel，均自足。`MixinTargetTest` 有守卫：YSM 一旦内嵌 GeckoLib 会提示可移除外置件，GeckoLib 从锁文件消失会失败。
+- **Mixin 目标重叠**：本项目的 Mixin 与四个模组的 Mixin 在 7 个类上重叠（`AbstractArrow`、`Projectile`、`Entity`、`Player`、`ServerPlayer`、`LevelRenderer`、`MouseHandler`）。逐一比对了发布字节码的注入点：TLM 的 `EntityMixin` 包装的是 `move` 方法内对 `collide` 的调用点而本项目注入的是 `collide` 方法本身；TLM 的 `ArrowMixin` 在 `tick` HEAD 注入而本项目只在 `tick` 内包装 `Level.clip` 调用点；其余均无方法级交集。允许清单写死在 `MixinTargetTest.ALLOWED_SHARED_MIXIN_TARGETS`，出现清单外的新重叠时测试直接失败，需要重新人工评估。
+- **Veil**：TaCZ 官方标注的已知冲突（与 Veil 3.1.2 之前）不适用——Sable 内嵌 Veil 4.3.2 已修复；本项目的 `VeilPostMixin` 目标有效性由现有字节码审计测试覆盖。
+- **导出预算**：实体导出上限从 96 提高到 192（女仆、扫帚和枪械投射物很快占满旧预算）；方块实体预算 256 不变。
+
+### 已知语义交互与待实测项
+
+- TLM 扫帚做物理检查时跳过 `collide` 调用，此时扫帚不与本项目的终末地地形碰撞（可能穿地）——这是女仆模组的主动行为，不崩溃，待实测确认表现。
+- TaCZ 标注“特定条件下第一人称手部消失”，桥接模式不导出第一人称手臂，预期无影响。
+- 枪械射击、女仆动画与 YSM 模型都走标准实体渲染调度，网格捕获理论上有效，但 **GeckoLib 动画层的捕获效果、TaCZ 枪口的附加特效是否绕过捕获，必须实机验证**，不能只凭加载成功就认定兼容。
+- Maid Addition 会让女仆加载周围区块，可能扩大进入导出预算的实体数量，需要实测帧率与预算表现。
 
 ## 构建，不启动游戏
 
@@ -160,9 +183,10 @@ python tools/configure-gameplay-startup.py --auto-start --module gameplay34 --an
 | 船体与宿主地形碰撞 | 已写 `SableTerrainMixin`／`SableHostTerrain`：在 Sable 把区块段上传给 Rapier 前，用宿主地形体素填充空气格；地形流更新、方块改动后逐格同步，玩家放置的 MC 方块优先。宿主地形按石头的摩擦与弹性计算。适配器已加载无报错，**船体落地、滑行和地形重载尚未实机验收** |
 | Create: Flight Control | 0.7.7 已加载，未装的可选联动（ComputerCraft 等）自动跳过；飞控方块尚未实机验收 |
 | 宿主 NPC 与移动船体 | 当前动态网格通过场景消息绘制，没有建立对应的动态宿主碰撞体；NPC 登机、阻挡与寻路未完成 |
+| 内容模组（TaCZ／YSM／TLM／Maid Addition） | 五件 JAR 已锁哈希并加入 `libs/`，Mixin 冲突静态审计通过；模组加载、枪械射击与换弹、女仆实体导出、YSM 第三人称模型进 avatar 通道、扫帚穿地表现、实体预算表现均需实机验收 |
 | 光影与额外渲染器 | 未兼容。Veil／Flywheel 的特殊 GPU 绘制和材质效果需要分别检查；暂不安装额外光影模组 |
 
-首轮限制为附近静态区块、最多 96 个普通实体、256 个方块实体及 8 艘附近船体，船体方块遍历总预算 8192。单条纹理消息受协议大小限制，高分辨率材质可能超出预算。这是便于首轮定位问题的范围，不保证复杂大型飞船或工厂帧率。
+首轮限制为附近静态区块、最多 192 个普通实体、256 个方块实体及 8 艘附近船体，船体方块遍历总预算 8192。单条纹理消息受协议大小限制，高分辨率材质可能超出预算。这是便于定位问题的范围，不保证复杂大型飞船或工厂帧率。
 
 下一阶段验收小型航空学船体在终末地地面的起降与滑行，并为移动船体建立宿主碰撞体；完成前不标记“航空学完全兼容”。
 

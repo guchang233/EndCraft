@@ -140,4 +140,173 @@ class MixinTargetTest {
             for (String method : entry.getValue()) assertTrue(cls.methods.stream().anyMatch(m -> (m.name + m.desc).equals(method)), entry.getKey() + "." + method);
         }
     }
+
+    /** Content mods loaded from libs/ alongside the bridge, keyed by artifact file. */
+    private static final Map<String, List<String>> CONTENT_MOD_MIXINS = Map.of(
+        "tacz-neoforge-1.21.1-1.1.8-hotfix-r7.jar", List.of("tacz.mixins.json"),
+        "ysm-2.6.3-neoforge+mc1.21.1-release.jar", List.of("yes_steve_model.mixins.json"),
+        "touhoulittlemaid-1.5.3-neoforge+mc1.21.1.jar", List.of("touhou_little_maid.mixins.json"),
+        "maidaddition1.21.1-1.0.1-beta-all.jar", List.of("maidaddition.mixins.json"));
+
+    private com.google.gson.JsonObject readConfig(ZipFile zip, String config) throws Exception {
+        var entry = zip.getEntry(config);
+        assertNotNull(entry, "Missing mixin config in jar: " + config);
+        String text = new String(zip.getInputStream(entry).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        return JsonParser.parseString(text).getAsJsonObject();
+    }
+
+    private static Set<String> mixinTargetClasses(ClassNode mixin) {
+        var annotation = annotations(mixin.visibleAnnotations, mixin.invisibleAnnotations).stream()
+            .filter(a -> a.desc.equals("Lorg/spongepowered/asm/mixin/Mixin;")).findFirst().orElse(null);
+        if (annotation == null) return Set.of();
+        var v = values(annotation);
+        Set<String> targets = new HashSet<>();
+        if (v.containsKey("value")) for (var type : list(v.get("value"))) targets.add(((Type) type).getInternalName());
+        if (v.containsKey("targets")) for (var name : list(v.get("targets"))) targets.add(name.toString().replace('.', '/'));
+        return targets;
+    }
+
+    private Set<String> ownMixinTargetClasses() throws Exception {
+        Set<String> targets = new HashSet<>();
+        for (String config : List.of("skycraft.mixins.json", "skycraft.client.mixins.json")) {
+            var json = JsonParser.parseString(Files.readString(Path.of("src/main/resources", config))).getAsJsonObject();
+            String pkg = json.get("package").getAsString();
+            var names = json.has("mixins") ? json.getAsJsonArray("mixins") : json.getAsJsonArray("client");
+            for (var name : names) {
+                String id = pkg + "." + name.getAsString();
+                var mixin = parse(Files.readAllBytes(Path.of("build/classes/java/main", id.replace('.', '/') + ".class")));
+                targets.addAll(mixinTargetClasses(mixin));
+            }
+        }
+        return targets;
+    }
+
+    private Map<String, Set<String>> contentModMixinTargetClasses() throws Exception {
+        Map<String, Set<String>> result = new LinkedHashMap<>();
+        for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
+            try (var zip = new ZipFile(Path.of("libs", jarConfig.getKey()).toString())) {
+                Set<String> targets = new HashSet<>();
+                for (String config : jarConfig.getValue()) {
+                    var json = readConfig(zip, config);
+                    String pkg = json.get("package").getAsString();
+                    var names = new ArrayList<com.google.gson.JsonElement>();
+                    if (json.has("mixins")) json.getAsJsonArray("mixins").forEach(names::add);
+                    if (json.has("client")) json.getAsJsonArray("client").forEach(names::add);
+                    for (var name : names) {
+                        String id = pkg + "." + name.getAsString();
+                        var entry = zip.getEntry(id.replace('.', '/') + ".class");
+                        if (entry == null) continue;
+                        targets.addAll(mixinTargetClasses(parse(zip.getInputStream(entry).readAllBytes())));
+                    }
+                }
+                result.put(jarConfig.getKey(), targets);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Classes mixed into by both this project and a loaded content mod. Each entry was cleared by
+     * comparing injection points in the publisher bytecode: no method is injected at overlapping
+     * @At sites by both sides. Anything outside this list failing the test needs the same manual
+     * review before it is allowed in.
+     * <ul>
+     * <li>AbstractArrow: ours wraps Level.clip inside tick and injects onHitEntity; TLM injects
+     * tick at HEAD (maid-owned arrows), YSM hooks setOwner. No shared call site.</li>
+     * <li>Projectile: ours injects hitTargetOrDeflectSelf; YSM hooks setOwner.</li>
+     * <li>Entity: ours injects collide at RETURN; TLM wraps the collide INVOKE inside move
+     * (EntityBroom physical check). Different methods.</li>
+     * <li>Player: ours injects maybeBackOffFromEdge; TLM targets rider/movement paths.</li>
+     * <li>ServerPlayer: ours injects crit and die; YSM hooks positionRider/startRiding, TaCZ
+     * weapon handling.</li>
+     * <li>LevelRenderer: ours injects setSectionDirty; YSM injects renderLevel and fog color.</li>
+     * <li>MouseHandler: ours is an accessor only; TaCZ injects scrolling/zoom paths.</li>
+     * </ul>
+     */
+    private static final Set<String> ALLOWED_SHARED_MIXIN_TARGETS = Set.of(
+        "net/minecraft/world/entity/projectile/AbstractArrow",
+        "net/minecraft/world/entity/projectile/Projectile",
+        "net/minecraft/world/entity/Entity",
+        "net/minecraft/world/entity/player/Player",
+        "net/minecraft/server/level/ServerPlayer",
+        "net/minecraft/client/renderer/LevelRenderer",
+        "net/minecraft/client/MouseHandler");
+
+    @Test void contentModMixinConfigurationsResolveEveryDeclaredMixinClass() throws Exception {
+        for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
+            try (var zip = new ZipFile(Path.of("libs", jarConfig.getKey()).toString())) {
+                for (String config : jarConfig.getValue()) {
+                    var json = readConfig(zip, config);
+                    String pkg = json.get("package").getAsString();
+                    var names = new ArrayList<com.google.gson.JsonElement>();
+                    if (json.has("mixins")) json.getAsJsonArray("mixins").forEach(names::add);
+                    if (json.has("client")) json.getAsJsonArray("client").forEach(names::add);
+                    int resolved = 0;
+                    for (var name : names) {
+                        String id = pkg + "." + name.getAsString();
+                        var entry = zip.getEntry(id.replace('.', '/') + ".class");
+                        assertNotNull(entry, config + " declares a missing mixin class: " + id);
+                        var mixin = parse(zip.getInputStream(entry).readAllBytes());
+                        assertTrue(mixinTargetClasses(mixin).size() > 0 || id.endsWith("Accessor"),
+                            config + " mixin without any @Mixin target: " + id);
+                        resolved++;
+                    }
+                    assertTrue(resolved > 0 || config.equals("maidaddition.mixins.json"),
+                        config + " resolved no mixin classes");
+                }
+            }
+        }
+    }
+
+    @Test void endcraftMixinsOnlyShareReviewedTargetClassesWithLoadedContentMods() throws Exception {
+        Set<String> own = ownMixinTargetClasses();
+        assertFalse(own.isEmpty(), "Own mixin audit found no target classes");
+        List<String> unreviewed = new ArrayList<>();
+        for (var entry : contentModMixinTargetClasses().entrySet())
+            for (String target : entry.getValue())
+                if (own.contains(target) && !ALLOWED_SHARED_MIXIN_TARGETS.contains(target))
+                    unreviewed.add(target + " shared with " + entry.getKey());
+        assertTrue(unreviewed.isEmpty(),
+            "New shared mixin target classes need manual review before running: " + unreviewed);
+    }
+
+    @Test void everyLibsJarIsHashLockedAndEveryLockedArtifactIsPresent() throws Exception {
+        Map<String, String> expected = new LinkedHashMap<>();
+        for (var item : JsonParser.parseString(Files.readString(Path.of("modpack.lock.json"))).getAsJsonArray()) {
+            var obj = item.getAsJsonObject();
+            expected.put(obj.get("filename").getAsString(), obj.get("sha512").getAsString());
+        }
+        for (var entry : expected.entrySet()) {
+            var file = Path.of("libs", entry.getKey());
+            assertTrue(Files.isRegularFile(file), "Locked artifact missing from libs: " + entry.getKey());
+            var digest = java.security.MessageDigest.getInstance("SHA-512");
+            try (var in = Files.newInputStream(file)) {
+                byte[] buffer = new byte[65536];
+                for (int read; (read = in.read(buffer)) != -1; ) digest.update(buffer, 0, read);
+            }
+            assertEquals(entry.getValue(), java.util.HexFormat.of().formatHex(digest.digest()),
+                "Locked artifact hash mismatch: " + entry.getKey());
+        }
+        try (var files = Files.list(Path.of("libs"))) {
+            for (var file : files.filter(p -> p.toString().endsWith(".jar")).toList()) {
+                assertTrue(expected.containsKey(file.getFileName().toString()), "Unlocked jar in libs: " + file);
+            }
+        }
+    }
+
+    @Test void yesSteveModelStaysWithoutBundledGeckoLibWhileTheDependencyStaysLocked() throws Exception {
+        boolean bundled = false;
+        try (var zip = new ZipFile(Path.of("libs", "ysm-2.6.3-neoforge+mc1.21.1-release.jar").toString())) {
+            for (var entries = zip.entries(); entries.hasMoreElements(); ) {
+                String name = entries.nextElement().getName();
+                if (name.startsWith("software/bernie/") && name.endsWith(".class")) { bundled = true; break; }
+            }
+        }
+        assertFalse(bundled, "YSM now bundles GeckoLib; the externally locked geckolib artifact can be dropped");
+        boolean locked = false;
+        for (var item : JsonParser.parseString(Files.readString(Path.of("modpack.lock.json"))).getAsJsonArray()) {
+            if (item.getAsJsonObject().get("project").getAsString().equals("geckolib")) locked = true;
+        }
+        assertTrue(locked, "geckolib must stay in the lockfile while YSM loads it as an external dependency");
+    }
 }

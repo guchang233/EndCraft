@@ -13,14 +13,24 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     for item in lock:
         name = item['filename']
-        url = urllib.parse.urlparse(item['url'])
+        url_text = item.get('url')
+        file = destination / name
+        if url_text is None:
+            # Locked local artifact with no publisher URL: verify the on-disk
+            # copy only, and never fetch anything from the network for it.
+            if not file.is_file():
+                raise RuntimeError('Locked local artifact missing and no publisher URL: ' + name)
+            if hashlib.sha512(file.read_bytes()).hexdigest() != item['sha512']:
+                raise RuntimeError('Locked local artifact checksum mismatch: ' + name)
+            print('Verified locked local ' + name, flush=True)
+            continue
+        url = urllib.parse.urlparse(url_text)
         if Path(name).name != name or not name.endswith('.jar') or url.scheme != 'https' or url.hostname != 'cdn.modrinth.com':
             raise ValueError('Unexpected publisher artifact path or host')
-        file = destination / name
         if file.is_file() and hashlib.sha512(file.read_bytes()).hexdigest() == item['sha512']:
             print('Verified cached ' + name, flush=True)
             continue
-        request = urllib.request.Request(item['url'], headers={'User-Agent': 'EndCraft-NeoForge/experimental'})
+        request = urllib.request.Request(url_text, headers={'User-Agent': 'EndCraft-NeoForge/experimental'})
         with urllib.request.urlopen(request, timeout=120) as response:
             payload = response.read()
         if hashlib.sha512(payload).hexdigest() != item['sha512']:

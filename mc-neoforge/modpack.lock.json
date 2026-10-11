@@ -91,5 +91,65 @@
     ],
     "license_url": "https://modrinth.com/mod/create-flight-control",
     "source_url": "https://modrinth.com/mod/create-flight-control"
+  },
+  {
+    "project": "geckolib",
+    "project_id": "8BmcQJ2H",
+    "version_id": "Grwn5rUB",
+    "version": "4.9.3",
+    "filename": "geckolib-neoforge-1.21.1-4.9.3.jar",
+    "url": "https://cdn.modrinth.com/data/8BmcQJ2H/versions/Grwn5rUB/geckolib-neoforge-1.21.1-4.9.3.jar",
+    "sha512": "8dfa5f8c57224a5e34e5098367ea9819ca6dc9c11357cd3062c16da3455c8bd1a483098af7383debc4b9ce8e4d7ab3fdc799b415644eb829da83eb72a7335dfd",
+    "dependencies": [],
+    "license_url": "https://github.com/bernie-g/geckolib/blob/HEAD/LICENSE",
+    "source_url": "https://github.com/bernie-g/geckolib"
+  },
+  {
+    "project": "tacz-neoforge-port",
+    "project_id": "OypNE65K",
+    "version_id": "62q6mB5Q",
+    "version": "1.1.8-hotfix-r7",
+    "filename": "tacz-neoforge-1.21.1-1.1.8-hotfix-r7.jar",
+    "url": "https://cdn.modrinth.com/data/OypNE65K/versions/62q6mB5Q/tacz-neoforge-1.21.1-1.1.8-hotfix-r7.jar",
+    "sha512": "7700ed99a080729c3aa21f9619e018fbe9e2303cfbcaa463175ee5170553a000b692bc4cfa2e8ce0778747eed34dcc0197fb5e4344bb258cff1ba90adc842642",
+    "dependencies": [],
+    "license_url": "https://modrinth.com/mod/tacz-1.21.1",
+    "source_url": "https://github.com/MUKSC/TACZ-1.21.1"
+  },
+  {
+    "project": "yes-steve-model",
+    "project_id": "86xjpqqS",
+    "version_id": "yLfwunzP",
+    "version": "2.6.3-neoforge+mc1.21.1",
+    "filename": "ysm-2.6.3-neoforge+mc1.21.1-release.jar",
+    "url": "https://cdn.modrinth.com/data/86xjpqqS/versions/yLfwunzP/ysm-2.6.3-neoforge%2Bmc1.21.1-release.jar",
+    "sha512": "937a0718a35a318be4d87f842800b22ceb04a9551003468dff816f24d11f754778225edd9c8ca61ab03f94a80d0e72fe84ca2f1bdbf98aee6a75f584d8e8378c",
+    "dependencies": [],
+    "license_url": "https://modrinth.com/mod/yes-steve-model",
+    "source_url": "https://modrinth.com/mod/yes-steve-model"
+  },
+  {
+    "project": "touhou-little-maid",
+    "project_id": "R0bDWFAW",
+    "version_id": "tXG1TkGx",
+    "version": "1.5.3-neoforge+mc1.21.1",
+    "filename": "touhoulittlemaid-1.5.3-neoforge+mc1.21.1.jar",
+    "url": "https://cdn.modrinth.com/data/R0bDWFAW/versions/tXG1TkGx/touhoulittlemaid-1.5.3-neoforge%2Bmc1.21.1.jar",
+    "sha512": "147bc10f5cc7159ee16c4918795155b3e52cf6bab5e09f588ed3fec14f8b47bbc512948bb8fef30346a47feba2692b6dbe20781c6cc1dc1d2c6b9377a9649bbe",
+    "dependencies": [],
+    "license_url": "https://github.com/TartaricAcid/TouhouLittleMaid",
+    "source_url": "https://github.com/TartaricAcid/TouhouLittleMaid"
+  },
+  {
+    "project": "maid-addition",
+    "project_id": null,
+    "version_id": null,
+    "version": "1.0.1-beta",
+    "filename": "maidaddition1.21.1-1.0.1-beta-all.jar",
+    "url": null,
+    "sha512": "353de1d0e4719abf32ff5d428833792a149e57d506875d204b47424912759000f5903a46f699d6d79e55693ca7e1b529f3fcb9ad0e7df52c3293823fb4c5b9ba",
+    "dependencies": [],
+    "license_url": null,
+    "source_url": null
   }
 ]
