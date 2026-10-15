@@ -400,10 +400,15 @@ BE_Result BE_CALL initialize(const BE_ThirdPartyHostV1* input,const char* config
         return BE_Result_ContractMismatch;
     if(initialized) return BE_Result_Conflict;
     try {
-        if(!json::parse(config?config:"{}").is_object()) return BE_Result_InvalidArgument;
+        const auto initialConfig=json::parse(config?config:"{}");
+        if(!initialConfig.is_object()) return BE_Result_InvalidArgument;
+#ifdef ENDCRAFT_GAMEPLAY
+        const double damageMultiplier=initialConfig.value("damage_multiplier",endcraft::combat_damage::defaultMultiplier);
+        if(!endcraft::combat_damage::validMultiplier(damageMultiplier)) return BE_Result_InvalidArgument;
+#endif
         host={};std::memcpy(&host,input,(std::min)(std::size_t(input->struct_size),sizeof(host)));initialized=true;
 #ifdef ENDCRAFT_GAMEPLAY
-        const auto initialConfig=json::parse(config?config:"{}");
+        gameplay.damageMultiplier(damageMultiplier);
         if(initialConfig.contains("initial_host_anchor")) {
             auto anchor=initialConfig.at("initial_host_anchor").get<std::vector<float>>();
             if(anchor.size()!=3) return BE_Result_InvalidArgument;
@@ -444,7 +449,14 @@ BE_Result BE_CALL initialize(const BE_ThirdPartyHostV1* input,const char* config
 BE_Result BE_CALL configure(const char* config) {
     std::lock_guard lock(lifecycle);
     if(!initialized) return BE_Result_NotReady;
-    try {return json::parse(config?config:"{}").is_object()?BE_Result_Ok:BE_Result_InvalidArgument;}
+    try {
+        const auto value=json::parse(config?config:"{}");
+        if(!value.is_object()) return BE_Result_InvalidArgument;
+#ifdef ENDCRAFT_GAMEPLAY
+        gameplay.damageMultiplier(value.value("damage_multiplier",endcraft::combat_damage::defaultMultiplier));
+#endif
+        return BE_Result_Ok;
+    }
     catch(...) {return BE_Result_InvalidArgument;}
 }
 BE_Result BE_CALL message(const char* request,const char* body) {

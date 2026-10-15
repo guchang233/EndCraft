@@ -43,7 +43,7 @@ class EfmlToolsTest(unittest.TestCase):
         self.assertEqual(rpc.INDEX,self.profile/'modules/index.json')
 
     def test_startup_preserves_selected_launcher_and_anchor(self):
-        config={'guest_launcher':'C:/chosen/start-guest.ps1','initial_host_anchor':[1,2,3],'custom':42}
+        config={'guest_launcher':'C:/chosen/start-guest.ps1','initial_host_anchor':[1,2,3],'custom':42,'damage_multiplier':1.5}
         (self.profile/'modules/index.json').write_text(json.dumps({'modules':[
             {'id':'endcraft.gameplay35','configuration':config}]}))
         startup=load('efml_startup','configure-gameplay-startup.py')
@@ -52,6 +52,17 @@ class EfmlToolsTest(unittest.TestCase):
         args=command.call_args.args
         self.assertEqual(args[:2],('config','endcraft.gameplay35'))
         self.assertEqual(json.loads(args[2]),dict(config,auto_enable=True))
+        with patch.object(efml_support,'command',return_value='saved') as command:
+            with contextlib.redirect_stdout(io.StringIO()):startup.main(True,kind='gameplay35',damage_multiplier=2)
+        self.assertEqual(json.loads(command.call_args.args[2]),dict(config,auto_enable=True,damage_multiplier=2))
+
+    def test_startup_rejects_invalid_damage_scale_without_changing_config(self):
+        startup=load('efml_invalid_scale','configure-gameplay-startup.py')
+        with patch.object(efml_support,'command') as command:
+            for value in [0,-1,101,.009,float('nan'),float('inf'),'2',True]:
+                with self.assertRaisesRegex(RuntimeError,'Damage multiplier'):
+                    startup.main(True,kind='gameplay35',damage_multiplier=value)
+        command.assert_not_called()
 
     def test_registration_refuses_to_overwrite_registered_dll(self):
         (self.profile/'modules/index.json').write_text(json.dumps({'modules':[

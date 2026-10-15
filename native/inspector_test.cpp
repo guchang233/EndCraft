@@ -20,10 +20,20 @@ int main(int argc,char** argv) {
         check(module->initialize(nullptr,"{}")==BE_Result_ContractMismatch,"Null host");
         auto wrong=host;wrong.module_id="other";check(module->initialize(&wrong,"{}")==BE_Result_ContractMismatch,"Identity");
         check(module->initialize(&host,"[]")==BE_Result_InvalidArgument,"Config object");
+        const bool gameplay=std::string(module->id).starts_with("endcraft.gameplay");
+        if(gameplay) check(module->initialize(&host,"{\"damage_multiplier\":0}")==BE_Result_InvalidArgument,"Invalid initial damage scale must not consume initialization");
         check(module->initialize(&host,"{}")==BE_Result_Ok,"Initialize");
         check(module->initialize(&host,"{}")==BE_Result_Conflict,"Duplicate");
         check(module->on_message("status","{\"action\":\"status\"}")==BE_Result_Ok,"Status reply");
         check(lastResult==BE_Result_Ok&&!lastBody["gameplay_modified"].get<bool>(),"Read-only status");
+        if(gameplay) {
+            check(lastBody["gameplay"]["combat"]["damage_model"]=="player_attack","Damage model");
+            check(module->configuration_changed("{\"damage_multiplier\":2}")==BE_Result_Ok,"Damage scale update");
+            for(const char* invalid:{"{\"damage_multiplier\":0}","{\"damage_multiplier\":-1}","{\"damage_multiplier\":101}","{\"damage_multiplier\":\"bad\"}"})
+                check(module->configuration_changed(invalid)==BE_Result_InvalidArgument,"Invalid damage scale");
+            check(module->on_message("status","{\"action\":\"status\"}")==BE_Result_Ok,"Damage scale status");
+            check(lastBody["gameplay"]["combat"]["damage_multiplier"]==2,"Invalid update preserved damage scale");
+        }
         if(std::string(module->id)=="endcraft.inspect") {
             check(module->on_message("inspect","{\"action\":\"inspect\"}")==BE_Result_Ok,"Inspect reply");
             check(lastResult!=BE_Result_Ok&&lastBody["error"]=="runtime_not_ready","No simulated metadata claim");

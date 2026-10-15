@@ -11,7 +11,7 @@ spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-prob
 installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
 
 def main(kind='inspect'):
-    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'): raise RuntimeError('Unknown project module.')
+    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38','gameplay39'): raise RuntimeError('Unknown project module.')
     module_id='endcraft.'+kind
     if efml_support.available():
         package=ROOT/'build'/f'{kind}-package'
@@ -34,7 +34,7 @@ def main(kind='inspect'):
         return
     state=json.loads(installer.STATE.read_text());installer.validate_owned(state)
     package=ROOT/'build'/f'{kind}-package'
-    configuration={'auto_enable':True,'guest_launcher':str(ROOT/'tools/start-guest.ps1')} if kind in ('gameplay2','gameplay3','gameplay35','gameplay36','gameplay37','gameplay38') else {}
+    configuration={'auto_enable':True,'guest_launcher':str(ROOT/'tools/start-guest.ps1')} if kind in ('gameplay2','gameplay3','gameplay35','gameplay36','gameplay37','gameplay38','gameplay39') else {}
     manifest={'format':1,'abi':1,'id':module_id,'version':'0.1.0','name':'EndCraft '+kind,
               'libraries':{'windows-x64':f'native/windows-x64/{module_id}.dll'},'dependencies':[],'default_configuration':configuration}
     destination=package/f'native/windows-x64/{module_id}.dll'
@@ -71,5 +71,5 @@ def main(kind='inspect'):
 
 if __name__=='__main__':
     import argparse
-    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'],default='inspect')
+    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38','gameplay39'],default='inspect')
     main(parser.parse_args().kind)

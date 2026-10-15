@@ -36,7 +36,7 @@ def archive_source(output, version):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--module', default='endcraft.gameplay38')
+    parser.add_argument('--module', default='endcraft.gameplay39')
     args = parser.parse_args()
     version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
     module = args.module
@@ -73,7 +73,7 @@ def main():
     # The gameplay module only opens the shared memory; endcraft.probe creates it, so both are required.
     # auto_enable starts the bridge on entering the game.
     # Declaring the dependency makes Better-Endfield report a missing shared-memory module.
-    module_zip = module_package(module, dll, 'EndCraft ' + version, {'auto_enable': True}, ['endcraft.probe'])
+    module_zip = module_package(module, dll, 'EndCraft ' + version, {'auto_enable': True, 'damage_multiplier': 1.0}, ['endcraft.probe'])
     probe_zip = module_package('endcraft.probe', probe, 'EndCraft shared memory ' + version, {}, [])
     shutil.copy2(jar, output / jar.name)
     shutil.copy2(neo_jar, output / neo_jar.name)

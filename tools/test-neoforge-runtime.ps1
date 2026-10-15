@@ -1,11 +1,23 @@
-param([ValidateSet('status','open_world','render_test_world','loading_probe','abort_test_load','continue_world','render_test_ship','plot_transform_audit','atlas_request','atlas_poll','mesh_benchmark','shader_mesh','shader_preview','particle_seed','particle_audit','capture_frame','inventory','fixture','ship','stop','third_person','first_person','equip_gun','gun_refit','compat_audit','maid_walk','render_audit','overlay_audit','stage_probe','pick_probe','rendertype_probe','keys_probe','inject_quote','inject_f1','close_screen','key_watch')][string]$Operation='status')
+param([ValidateSet('status','open_world','render_test_world','loading_probe','abort_test_load','continue_world','render_test_ship','plot_transform_audit','atlas_request','atlas_poll','mesh_benchmark','shader_mesh','shader_preview','particle_seed','particle_audit','capture_frame','inventory','fixture','ship','stop','third_person','first_person','equip_gun','gun_refit','compat_audit','maid_walk','render_audit','overlay_audit','stage_probe','pick_probe','rendertype_probe','keys_probe','inject_quote','inject_f1','close_screen','key_watch')][string]$Operation='status', [string]$GameDirectory)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskJdk=Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon\bin'
-$taskClients=@(Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object {
-    $_.CommandLine -and $_.CommandLine.Contains('net.neoforged.devlaunch.Main') -and $_.CommandLine.Contains((Join-Path $taskRoot 'mc-neoforge'))
+if ($GameDirectory) {
+    $taskGameDirectory=[IO.Path]::GetFullPath($GameDirectory).TrimEnd('\')
+    if (!(Test-Path -LiteralPath $taskGameDirectory -PathType Container) -or
+        !(Get-ChildItem -LiteralPath (Join-Path $taskGameDirectory 'mods') -Filter 'endcraft-neoforge-guest-*.jar' -ErrorAction SilentlyContinue)) {
+        throw 'The selected NeoForge instance must contain this project mod.'
+    }
+}
+$taskClients=@(Get-CimInstance Win32_Process | Where-Object {
+    if ($_.Name -notin @('java.exe','javaw.exe') -or !$_.CommandLine) {return $false}
+    if (!$GameDirectory) {return $_.CommandLine.Contains('net.neoforged.devlaunch.Main') -and $_.CommandLine.Contains((Join-Path $taskRoot 'mc-neoforge'))}
+    $taskMatch=[regex]::Match($_.CommandLine,'(?:^|\s)--gameDir\s+(?:"([^"]+)"|(\S+))')
+    if (!$taskMatch.Success -or $_.CommandLine -notlike '*neoforge*') {return $false}
+    $taskCandidate=if($taskMatch.Groups[1].Success){$taskMatch.Groups[1].Value}else{$taskMatch.Groups[2].Value}
+    return [IO.Path]::GetFullPath($taskCandidate).TrimEnd('\') -eq $taskGameDirectory
 })
-if($taskClients.Count -ne 1){throw 'Exactly one project NeoForge development client required.'}
+if($taskClients.Count -ne 1){throw 'Exactly one matching EndCraft NeoForge client required.'}
 $taskAgentRoot=Join-Path $taskRoot 'build\neo-test-agent'
 New-Item -ItemType Directory -Force -Path $taskAgentRoot | Out-Null
 $taskSource=Join-Path $PSScriptRoot 'EndCraftNeoTestAgent.java'

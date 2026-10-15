@@ -17,7 +17,7 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / 'status.json'
         with contextlib.redirect_stdout(io.StringIO()):
-            report.collect('status', output, 'endcraft.gameplay38')
+            report.collect('status', output, 'endcraft.gameplay39')
         gameplay = json.loads(output.read_text(encoding='utf-8'))['body']['gameplay']
     anchor = gameplay.get('origin_raw_units')
     if not anchor or not gameplay.get('initialized'):

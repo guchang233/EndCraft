@@ -4,6 +4,7 @@
 #include "coordinate_map.h"
 #include "native_passengers.h"
 #include "native_interaction.h"
+#include "combat_damage.h"
 #include "nlohmann/json.hpp"
 #include <unordered_map>
 #include <cmath>
@@ -25,13 +26,13 @@ class NativeCombat {
     double hpBefore=0,serverHpBefore=0,hpAfter=0,serverHpAfter=0;
     std::uint64_t watchUntil=0;
     std::string error,lastResult;
-    double lastMcDamage=0,lastHostDamage=0;
+    double lastMcDamage=0,lastHostDamage=0,lastPlayerAttack=0;
+    double damageScale=combat_damage::defaultMultiplier;
     std::uint64_t localHpDrops=0;
     void* protectionBox=nullptr;
     std::uint32_t protectionRoot=0,protectedPlayer=0;
     std::string protectionError;
     double playerHp=0,playerMaxHp=0;
-    static constexpr double virtualEnemyHealth=20.0;
     static constexpr const char* assembly="Gameplay.Beyond.dll";
     static constexpr const char* space="Beyond.Gameplay.Core";
     BE_ResolvedMethodV1 method(const char* type,const char* name,const char* params="",const char* result="System.Void") {
@@ -140,6 +141,10 @@ class NativeCombat {
         memory.actors(records);
     }
 public:
+    void damageMultiplier(double value) {
+        if(!combat_damage::validMultiplier(value)) throw std::runtime_error("damage_multiplier must be between 0.01 and 100");
+        damageScale=value;
+    }
     void bind(const BE_HostApiV1* runtime) {api.bind(runtime);passengers.bind(runtime);interaction.bind(runtime);}
     void observeNativeBomb(void* id,float strength,std::int64_t mask) {interaction.observeBomb(id,strength,mask);}
     void releaseProtection() noexcept {
@@ -199,9 +204,11 @@ public:
                 const auto hp=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
                 const auto serverHp=api.value<double>(method("AbilitySystem","get_serverHp","","System.Double"),found->second.ability);
                 if(hp<=0) {++rejected;lastResult="target_already_dead";continue;}
-                // Proxies have Minecraft's 20-point maximum health. Map the actual MC
-                // hit to the same fraction of the target's native maximum health.
-                double amount=double(std::clamp(event.a,0.f,10000.f))*found->second.maxHp/virtualEnemyHealth;
+                // Proxy health is only a hit-detection implementation detail. Scaling by
+                // target max HP made weak mobs and bosses take the same hit count.
+                const double attack=api.value<double>(method("AbilitySystem","get_atk","","System.Double"),source);
+                double amount=combat_damage::amount(event.a,attack,damageScale);
+                if(amount<=0) {++rejected;lastResult="invalid_player_attack_or_damage_scale";continue;}
                 int damageType=enumValue<int>("DamageType",(event.flags&proto::kHitFire)?"Fire":"Physical","Common.Beyond.dll","Beyond.GEnums");
                 std::int64_t mask=enumValue<std::int64_t>("DamageDecorateMask",(event.flags&proto::kHitExplosive)?"Bomb":"NormalAttack",assembly,"Beyond.Gameplay");
                 int visual=enumValue<int>("AbilitySystem/Modifier/DamageVisualImportance","Level0");
@@ -213,7 +220,7 @@ public:
                 auto* modifier=boxed?api.raw()->object_unbox(api.raw()->context,boxed):nullptr;
                 if(!modifier) throw std::runtime_error("combat damage modifier missing");
                 const int result=api.value<int>(method("AbilitySystem","ApplyModifier","Beyond.Gameplay.Core.AbilitySystem.Modifier&","Beyond.Gameplay.Core.AbilitySystem.Modifier.ApplyResult"),found->second.ability,{modifier});
-                lastMcDamage=event.a;lastHostDamage=amount;
+                lastMcDamage=event.a;lastHostDamage=amount;lastPlayerAttack=attack;
                 hpAfter=api.value<double>(method("AbilitySystem","get_hp","","System.Double"),found->second.ability);
                 serverHpAfter=api.value<double>(method("AbilitySystem","get_serverHp","","System.Double"),found->second.ability);
                 if(result==enumValue<int>("AbilitySystem/Modifier/ApplyResult","Succeed")) {
@@ -231,7 +238,9 @@ public:
         nlohmann::json actors=nlohmann::json::array();
         for(const auto& [id,a]:targets) actors.push_back({{"id",id},{"position",{a.position.x,a.position.y,a.position.z}},{"hp",a.hp},{"max_hp",a.maxHp},{"hostile",a.hostile},{"rideable",a.rideable}});
         return {{"native_explosions",interaction.snapshot()}, {"hurt_reactions",{{"requests",hurtRequests},{"calls",hurtCalls},{"state_changes",hurtStateChanges},{"last_animation",lastHurtAnim},{"error",hurtError}}},
-            {"passengers",passengers.snapshot()},{"path","minecraft_damage_modifier"},{"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"virtual_enemy_health",virtualEnemyHealth},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_actors",targets.size()},{"nearby_enemies",std::count_if(targets.begin(),targets.end(),[](const auto& a){return a.second.hostile;})},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
+            {"passengers",passengers.snapshot()},{"path","minecraft_damage_modifier"},{"damage_model","player_attack"},
+            {"damage_multiplier",damageScale},{"mc_points_per_native_attack",combat_damage::mcPointsPerAttack},{"last_player_attack",lastPlayerAttack},
+            {"creative_protection",protectionBox!=nullptr},{"protection_error",protectionError},{"player_hp",playerHp},{"player_max_hp",playerMaxHp},{"last_mc_damage",lastMcDamage},{"last_host_damage",lastHostDamage},{"local_hp_drops",localHpDrops},{"targets",actors},{"nearby_actors",targets.size()},{"nearby_enemies",std::count_if(targets.begin(),targets.end(),[](const auto& a){return a.second.hostile;})},{"requests",requests},{"accepted",accepted},{"rejected",rejected},
             {"confirmed_hp_drops",confirmedHpDrops},{"watched_target",watched},{"hp_before",hpBefore},{"hp_after",hpAfter},
             {"server_hp_before",serverHpBefore},{"server_hp_after",serverHpAfter},{"last_result",lastResult},{"error",error}};
     }

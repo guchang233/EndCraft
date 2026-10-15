@@ -303,6 +303,7 @@ public:
         return false;
     }
     void inputHooksReady(bool value) {nativeKeyHooks=value;}
+    void damageMultiplier(double value) {std::lock_guard lock(mutex);combat.damageMultiplier(value);}
     void inputExclusive(bool value) {queuedInputMode.store(value?1:0);}
     void observeNativeBomb(void* id,float strength,std::int64_t mask) {combat.observeNativeBomb(id,strength,mask);}
     void rawMouse(long x,long y) noexcept {if(requested.load()) {++rawPackets;rawX.fetch_add(std::clamp(x,-10000L,10000L));rawY.fetch_add(std::clamp(y,-10000L,10000L));}}

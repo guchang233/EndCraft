@@ -76,6 +76,11 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay38.dll
 if errorlevel 1 exit /b 1
+rem gameplay39: scale combat by player attack instead of target maximum HP
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay39\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay39.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay39.dll
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_VISUAL_PROBE /DENDCRAFT_TARGETS_PROBE /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.targets\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.targets.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
@@ -95,4 +100,8 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\mesh_layers_test.cpp /Fe:mesh-layers-test.exe
 if errorlevel 1 exit /b 1
 mesh-layers-test.exe
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT ..\..\native\combat_damage_test.cpp /Fe:combat-damage-test.exe
+if errorlevel 1 exit /b 1
+combat-damage-test.exe
 exit /b %errorlevel%

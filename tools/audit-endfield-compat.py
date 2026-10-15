@@ -72,7 +72,7 @@ def main(game, output):
         'required_metadata_names': {'ok': not missing_names, 'missing': missing_names},
         'offline_compatible': compatible,
         'runtime_validation_required': True,
-        'module': 'endcraft.gameplay38',
+        'module': 'endcraft.gameplay39',
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

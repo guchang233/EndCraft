@@ -134,6 +134,10 @@ public class EndCraftNeoTestAgent {
                 }
                 if(op.equals("open_world")) {
                     if(mc.getClass().getField("level").get(mc) != null) throw new IllegalStateException("Preserve the open world");
+                    // A client that previously left its bridge world retains this guard.
+                    // Reset only after confirming that no world is open.
+                    var attempted=cls("dev.skycraft.client.MirrorWorld").getDeclaredField("attempted");
+                    attempted.setAccessible(true);attempted.setBoolean(null,false);
                     call(mc,"setScreen",cls("net.minecraft.client.gui.screens.TitleScreen").getConstructor().newInstance());
                     call(cls("dev.skycraft.client.MirrorWorld"),"openWhenReady",mc);log("open_world requested");return;
                 }
