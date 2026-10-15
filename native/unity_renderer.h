@@ -30,6 +30,13 @@ class UnityRenderer {
     std::vector<MeshObject> avatar;
     std::vector<MeshObject> scene;
     std::vector<unsigned char> pixels;
+    // Mesh updates are serialized on the Unity thread; retain staging storage across batches.
+    std::vector<proto::RenVertex> clippedVertices;
+    std::vector<alpha::Rect> alphaRects;
+    std::vector<unity::V3> meshPositions;
+    std::vector<unity::V2> meshUv;
+    std::vector<unsigned> meshColors;
+    std::vector<int> meshIndices;
     unity::V3 hostOrigin{},mcOrigin{.5f,64,.5f};
     int worldLayer=0,cameraMask=0;
     bool nativeAttempted=false;
@@ -42,6 +49,9 @@ class UnityRenderer {
             if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),result,{api.string(name)}))
                 api.call(api.method("Material","SetFloat","System.String|System.Single"),result,{api.string(name),&value});
         int queue=blended?3000:2000;api.call(api.method("Material","set_renderQueue","System.Int32"),result,{&queue});
+        if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),result,{api.string("_UseVertexColor")})) {
+            float enabled=1;api.call(api.method("Material","SetFloat","System.String|System.Single"),result,{api.string("_UseVertexColor"),&enabled});
+        }
         unity::Color color{float(tint&255)/255,float((tint>>8)&255)/255,float((tint>>16)&255)/255,float(tint>>24)/255};
         for(const char* name:{"_BaseColor","_Color"}) if(api.value<bool>(api.method("Material","HasProperty","System.String","System.Boolean"),result,{api.string(name)}))
             api.call(api.method("Material","SetColor","System.String|UnityEngine.Color"),result,{api.string(name),&color});
@@ -88,20 +98,26 @@ class UnityRenderer {
         if(count>200000||count%3) throw std::runtime_error("mesh vertex count invalid");
         auto* mat=material(texture,blended,tint);if(!mat) {api.setActive(object.object,false);return;}
         api.call(api.method("MeshFilter","set_sharedMesh","UnityEngine.Mesh"),object.filter,{nullptr});
-        std::vector<proto::RenVertex> clipped;
+        auto& clipped=clippedVertices;clipped.clear();
         if(auto tex=alphaTextures.find(texture);tex!=alphaTextures.end()) {
             for(std::size_t i=0;i<count;i+=3) {
-                if(!blended&&(clipAlpha||(vertices[i].flags&1))) alpha::triangle(tex->second,vertices+i,clipped);
+                if(!blended&&(clipAlpha||(vertices[i].flags&1))) alpha::triangle(tex->second,vertices+i,clipped,&alphaRects);
                 else clipped.insert(clipped.end(),vertices+i,vertices+i+3);
             }
             if(clipped.size()>200000) throw std::runtime_error("alpha-clipped mesh exceeds vertex budget");
             vertices=clipped.data();count=clipped.size();
         }
-        std::vector<unity::V3> positions(count);std::vector<unity::V2> uv(count);std::vector<unsigned> colors(count);std::vector<int> indices(count);
+        auto& positions=meshPositions;positions.resize(count);
+        auto& uv=meshUv;uv.resize(count);
+        auto& colors=meshColors;colors.resize(count);
+        auto& indices=meshIndices;indices.resize(count);
         for(std::size_t i=0;i<count;++i) {
             const auto& v=vertices[i];
             if(!std::isfinite(v.x)||!std::isfinite(v.y)||!std::isfinite(v.z)) throw std::runtime_error("nonfinite mesh vertex");
-            positions[i]=coordinates::reflect(unity::V3{v.x,v.y,v.z});uv[i]={v.u,v.v};colors[i]=blended?0xffffffffu:v.color;
+            positions[i]=coordinates::reflect(unity::V3{v.x,v.y,v.z});uv[i]={v.u,v.v};
+            // Section layers already carry their vertex tint in the material; dynamic
+            // meshes need their per-vertex colour/alpha (particles fade through it).
+            colors[i]=blended&&tint!=0xffffffffu?0xffffffffu:v.color;
             // MC and Unity use opposite triangle winding conventions.
             indices[i]=int(i/3*3+(i%3==1?2:i%3==2?1:0));
         }
@@ -234,6 +250,7 @@ public:
         }
     }
     bool shaderSupported=false;
+    float hudTint=1.f;
     std::uint64_t hudFrames=0,meshMessages=0,avatarFrames=0;
     std::uint64_t avatarVertices=0;
     std::uint64_t sceneVertices=0,sceneFrames=0;
@@ -349,7 +366,9 @@ public:
                 }
                 float left=0,top=0,right=float(api.value<int>(api.method("Screen","get_width","","System.Int32"))),bottom=float(api.value<int>(api.method("Screen","get_height","","System.Int32")));
                 api.call(api.method("GL","LoadPixelMatrix","System.Single|System.Single|System.Single|System.Single"),nullptr,{&left,&right,&bottom,&top});
-                unity::Rect screen{0,0,right,bottom},uv{0,0,1,1};int zero=0,pass=0;unity::Color white{1,1,1,1};
+                // UI/Default is a custom material; the default DrawTexture
+                // material's half-colour convention does not apply to its alpha.
+                unity::Rect screen{0,0,right,bottom},uv{0,0,1,1};int zero=0,pass=0;unity::Color white{hudTint,hudTint,hudTint,1.f};
                 if(!nativeRendering) api.call(api.method("Graphics","DrawTexture","UnityEngine.Rect|UnityEngine.Texture|UnityEngine.Rect|System.Int32|System.Int32|System.Int32|System.Int32|UnityEngine.Color|UnityEngine.Material|System.Int32"),nullptr,{&screen,worldTarget,&uv,&zero,&zero,&zero,&zero,&white,hudMaterial,&pass});
                 api.call(api.method("Graphics","DrawTexture","UnityEngine.Rect|UnityEngine.Texture|UnityEngine.Rect|System.Int32|System.Int32|System.Int32|System.Int32|UnityEngine.Color|UnityEngine.Material|System.Int32"),nullptr,{&screen,hudTexture,&uv,&zero,&zero,&zero,&zero,&white,hudMaterial,&pass});
                 // The immediate path owns this frame's HUD. A simultaneous RawImage
@@ -411,7 +430,9 @@ public:
         else for(unsigned row=0;row<header.height;++row) std::memcpy(pixels.data()+row*header.width*4,source+(header.height-1-row)*header.width*4,header.width*4);
         if(!hudTexture||hudWidth!=header.width||hudHeight!=header.height) {
             if(hudTexture) api.destroy(hudTexture);
-            hudTexture=api.texture(header.width,header.height,pixels.data());hudWidth=header.width;hudHeight=header.height;
+            // MC already rendered display-encoded pixels. This final-screen blit
+            // must sample them verbatim, without a second sRGB-to-linear decode.
+            hudTexture=api.texture(header.width,header.height,pixels.data(),true);hudWidth=header.width;hudHeight=header.height;
             api.call(api.method("RawImage","set_texture","UnityEngine.Texture","System.Void","UnityEngine.UI.dll","UnityEngine.UI"),rawImage,{hudTexture});
         } else api.upload(hudTexture,hudWidth,hudHeight,pixels.data());
         api.setActive(canvas,GetTickCount64()-lastImmediateHud>250);++hudFrames;
@@ -436,7 +457,10 @@ public:
         }
         if(type==proto::kRenClearAll) {
             for(auto& [key,s]:sections) {api.destroy(s.object);api.destroy(s.mesh);}sections.clear();
-            for(auto& [key,group]:blendedSections) for(auto& [layer,s]:group) {api.destroy(s.object);api.destroy(s.mesh);}blendedSections.clear();return;
+            for(auto& [key,group]:blendedSections) for(auto& [layer,s]:group) {api.destroy(s.object);api.destroy(s.mesh);}blendedSections.clear();
+            for(auto& mesh:avatar) {api.setActive(mesh.object,false);mesh.drawn=false;}
+            for(auto& mesh:scene) {api.setActive(mesh.object,false);mesh.drawn=false;}
+            return;
         }
         if(type==proto::kRenSection) {
             auto header=read<proto::RenSection>(payload);std::array<int,3> key{header.sx,header.sy,header.sz};

@@ -25,6 +25,7 @@ public final class SkyCraftClient {
             ProbeTelemetry.tick(Minecraft.getInstance());
         });
         NeoForge.EVENT_BUS.addListener(dev.skycraft.client.render.GuestTerrainRenderer::render);
+        NeoForge.EVENT_BUS.addListener(dev.skycraft.client.TaczRefitView::opening);
         // A LAN guest keeps the host's terrain only while on the host's server.
         // In a friend's world with our own host game: tell their server not to send its terrain.
         NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingIn e) -> {
@@ -36,6 +37,9 @@ public final class SkyCraftClient {
         });
         NeoForge.EVENT_BUS.addListener((RegisterClientCommandsEvent e) -> e.getDispatcher().register(
             LiteralArgumentBuilder.<CommandSourceStack>literal("endcraft")
+                .then(LiteralArgumentBuilder.<CommandSourceStack>literal("render")
+                    .then(LiteralArgumentBuilder.<CommandSourceStack>literal("mesh").executes(c -> RenderBackend.select(c.getSource(), false)))
+                    .then(LiteralArgumentBuilder.<CommandSourceStack>literal("shader-preview").executes(c -> RenderBackend.select(c.getSource(), true))))
                 .then(LiteralArgumentBuilder.<CommandSourceStack>literal("recover").executes(c -> { SkyClient.requestRecovery(); return 1; }))
                 .then(LiteralArgumentBuilder.<CommandSourceStack>literal("lan")
                     .executes(c -> SkyLan.command(Minecraft.getInstance(), ""))
@@ -49,6 +53,7 @@ public final class SkyCraftClient {
                     .executes(c -> { MirrorWorld.leaveFriend(Minecraft.getInstance()); return 1; }))));
         dev.skycraft.world.SkyCollision.setSmoothCollider(e -> dev.skycraft.link.SkyLink.active() &&
             (e instanceof net.minecraft.world.entity.vehicle.Boat || e instanceof net.minecraft.world.entity.vehicle.AbstractMinecart ||
-             e instanceof net.minecraft.client.player.LocalPlayer || e instanceof net.minecraft.server.level.ServerPlayer p && dev.skycraft.net.SkyNet.isHost(p)));
+             e instanceof net.minecraft.world.entity.Mob || e instanceof net.minecraft.client.player.LocalPlayer ||
+             e instanceof net.minecraft.server.level.ServerPlayer p && dev.skycraft.net.SkyNet.isHost(p)));
     }
 }

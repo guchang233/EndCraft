@@ -5,11 +5,13 @@
   "client": [
     "BackupConfirmAccess",
     "CameraZoomMixin",
+    "GameRendererMixin",
     "ClientLevelDigMixin",
     "GuiVignetteMixin",
     "InputConstantsMixin",
     "KeyboardAccess",
     "MouseAccess",
+    "ParticleEngineAccess",
     "LevelRendererMixin",
     "MinecraftMixin",
     "ScreenMixin",

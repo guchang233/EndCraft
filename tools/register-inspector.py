@@ -4,17 +4,37 @@ import importlib.util
 import json
 import os
 import shutil
+import efml_support
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-probe.py')
 installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
 
 def main(kind='inspect'):
-    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34'): raise RuntimeError('Unknown project module.')
+    if kind not in ('inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'): raise RuntimeError('Unknown project module.')
     module_id='endcraft.'+kind
+    if efml_support.available():
+        package=ROOT/'build'/f'{kind}-package'
+        source=ROOT/f'build/native/{module_id}.dll'
+        destination=package/f'native/windows-x64/{module_id}.dll'
+        if any(m['id']==module_id for m in efml_support.modules()):
+            raise RuntimeError('Module already registered with EFML; preserve its potentially loaded DLL.')
+        if not source.is_file(): raise RuntimeError('Build the module first.')
+        destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(source,destination)
+        configuration={'auto_enable':False} if kind.startswith('gameplay') else {}
+        manifest={'format':1,'abi':1,'id':module_id,'version':'0.1.0',
+                  'name':'EndCraft '+kind,'author':'EndCraft project',
+                  'libraries':{'windows-x64':f'native/windows-x64/{module_id}.dll'},
+                  'dependencies':['endcraft.probe'] if kind.startswith('gameplay') else [],
+                  'default_configuration':configuration}
+        (package/'module.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+        shutil.copy2(ROOT/'LICENSE',package/'LICENSE')
+        print(efml_support.command('add','--dev',package))
+        return
     state=json.loads(installer.STATE.read_text());installer.validate_owned(state)
     package=ROOT/'build'/f'{kind}-package'
-    configuration={'auto_enable':True,'guest_launcher':str(ROOT/'tools/start-guest.ps1')} if kind in ('gameplay2','gameplay3') else {}
+    configuration={'auto_enable':True,'guest_launcher':str(ROOT/'tools/start-guest.ps1')} if kind in ('gameplay2','gameplay3','gameplay35','gameplay36','gameplay37','gameplay38') else {}
     manifest={'format':1,'abi':1,'id':module_id,'version':'0.1.0','name':'EndCraft '+kind,
               'libraries':{'windows-x64':f'native/windows-x64/{module_id}.dll'},'dependencies':[],'default_configuration':configuration}
     destination=package/f'native/windows-x64/{module_id}.dll'
@@ -40,6 +60,7 @@ def main(kind='inspect'):
             try: os.replace(temporary,path)
             finally: temporary.unlink(missing_ok=True)
             changed.append(path)
+        installer.release_external_ownership(state,Path(state['game_dir']).resolve())
         for record in state['files']:
             if Path(record['path']) in changed: record['sha256']=installer.sha(Path(record['path']))
         installer.STATE.write_text(json.dumps(state,indent=2))
@@ -50,5 +71,5 @@ def main(kind='inspect'):
 
 if __name__=='__main__':
     import argparse
-    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34'],default='inspect')
+    parser=argparse.ArgumentParser();parser.add_argument('kind',nargs='?',choices=['inspect','inspect2','inspect3','actor','visual','targets','targets2','canvas','telemetry','motion','teleport','gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'],default='inspect')
     main(parser.parse_args().kind)

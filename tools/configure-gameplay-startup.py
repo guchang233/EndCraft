@@ -5,12 +5,23 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import efml_support
 
 ROOT=Path(__file__).resolve().parents[1]
 
-def main(automatic,kind='gameplay33',anchor=None):
+def main(automatic,kind='gameplay38',anchor=None):
     if anchor is not None and (len(anchor)!=3 or any(not isinstance(x,(int,float)) or not math.isfinite(x) for x in anchor)):
         raise RuntimeError('A finite three-component world anchor is required.')
+    if efml_support.available():
+        identity='endcraft.'+kind
+        matches=[m for m in efml_support.modules() if m['id']==identity]
+        if len(matches)!=1: raise RuntimeError('Exactly one registered '+kind+' module required.')
+        config=dict(matches[0].get('configuration',{}))
+        config['auto_enable']=automatic
+        if anchor is not None: config['initial_host_anchor']=anchor
+        # Preserve the selected guest launcher; no implicit switch to Fabric.
+        print(efml_support.command('config',identity,json.dumps(config)))
+        return
     spec=importlib.util.spec_from_file_location('installer',ROOT/'tools/install-probe.py')
     installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
     original_state=installer.STATE.read_bytes()
@@ -55,7 +66,7 @@ if __name__=='__main__':
     group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--auto-start',action='store_true')
     group.add_argument('--manual',action='store_true')
-    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34'],default='gameplay33')
+    parser.add_argument('--module',choices=['gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'],default='gameplay38')
     anchors=parser.add_mutually_exclusive_group()
     anchors.add_argument('--anchor-report',type=Path,help='Previously verified runtime report whose world anchor should be retained.')
     anchors.add_argument('--anchor',type=float,nargs=3,metavar=('X','Y','Z'),help='World anchor in host units; LAN players use the host anchor (tools/show-anchor.py).')

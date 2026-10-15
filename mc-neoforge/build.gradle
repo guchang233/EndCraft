@@ -17,6 +17,7 @@ neoForge {
             systemProperty 'skycraft.quitWithSkyrim', providers.gradleProperty('bridgeHost').getOrElse('false')
             systemProperty 'skycraft.startHidden', providers.gradleProperty('bridgeHost').getOrElse('false')
             systemProperty 'endcraft.allowHostConnection', providers.gradleProperty('bridgeHost').getOrElse('false')
+            systemProperty 'endcraft.renderBackend', providers.gradleProperty('shaderPreview').getOrElse('false') == 'true' ? 'shader-preview' : 'mesh'
         }
     }
     mods { skycraft { sourceSet sourceSets.main } }
@@ -24,6 +25,10 @@ neoForge {
 dependencies {
     implementation 'org.jspecify:jspecify:1.0.0'
     runtimeOnly fileTree(dir: 'libs', include: '*.jar')
+    if (providers.gradleProperty('shaderPreview').getOrElse('false') == 'true') {
+        runtimeOnly fileTree(dir: 'libs-shaders', include: 'iris-*.jar')
+        runtimeOnly fileTree(dir: 'libs-shaders-dev', include: '*.jar')
+    }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

@@ -76,7 +76,8 @@ class MixinTargetTest {
                     for (var handler : mixin.methods) for (var annotation : annotations(handler.visibleAnnotations, handler.invisibleAnnotations)) {
                         var v = values(annotation);
                         boolean invoker = annotation.desc.endsWith("/Invoker;");
-                        if (!invoker && !annotation.desc.endsWith("/Inject;") && !annotation.desc.endsWith("/WrapOperation;")) continue;
+                        if (!invoker && !annotation.desc.endsWith("/Inject;") && !annotation.desc.endsWith("/WrapOperation;")
+                            && !annotation.desc.endsWith("/ModifyArg;")) continue;
                         Object selectors = v.get(invoker ? "value" : "method");
                         for (var selectorValue : list(selectors)) {
                             String selector = selectorValue.toString(); int paren = selector.indexOf('(');
@@ -112,6 +113,13 @@ class MixinTargetTest {
                                                 expected.add(Type.getObjectType("com/llamalad7/mixinextras/injector/wrapoperation/Operation"));
                                                 assertArrayEquals(expected.toArray(Type[]::new), Type.getArgumentTypes(handler.desc), id + " wrapper arguments");
                                                 assertEquals(Type.getReturnType(call.desc), Type.getReturnType(handler.desc), id + " wrapper return");
+                                            }
+                                            if (annotation.desc.endsWith("/ModifyArg;")) {
+                                                int index = ((Number) v.get("index")).intValue();
+                                                var callArgs = Type.getArgumentTypes(call.desc);
+                                                assertTrue(index >= 0 && index < callArgs.length, id + " modified argument index");
+                                                assertArrayEquals(new Type[]{callArgs[index]}, Type.getArgumentTypes(handler.desc), id + " modified argument type");
+                                                assertEquals(callArgs[index], Type.getReturnType(handler.desc), id + " modified return type");
                                             }
                                         }
                                     }
@@ -190,6 +198,7 @@ class MixinTargetTest {
     private Map<String, Set<String>> contentModMixinTargetClasses() throws Exception {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
+            if (optionalLocalArtifactMissing(jarConfig.getKey())) continue;
             try (var zip = new ZipFile(contentModJar(jarConfig.getKey()).toString())) {
                 Set<String> targets = new HashSet<>();
                 for (String config : jarConfig.getValue()) {
@@ -227,6 +236,8 @@ class MixinTargetTest {
      * weapon handling.</li>
      * <li>LevelRenderer: ours injects setSectionDirty; YSM injects renderLevel and fog color.</li>
      * <li>MouseHandler: ours is an accessor only; TaCZ injects scrolling/zoom paths.</li>
+     * <li>GameRenderer: ours changes the light argument at renderHandsWithItems inside
+     * renderItemInHand; TaCZ injects bobHurt, bobView and getFov. No shared call site.</li>
      * </ul>
      */
     private static final Set<String> ALLOWED_SHARED_MIXIN_TARGETS = Set.of(
@@ -236,10 +247,12 @@ class MixinTargetTest {
         "net/minecraft/world/entity/player/Player",
         "net/minecraft/server/level/ServerPlayer",
         "net/minecraft/client/renderer/LevelRenderer",
-        "net/minecraft/client/MouseHandler");
+        "net/minecraft/client/MouseHandler",
+        "net/minecraft/client/renderer/GameRenderer");
 
     @Test void contentModMixinConfigurationsResolveEveryDeclaredMixinClass() throws Exception {
         for (var jarConfig : CONTENT_MOD_MIXINS.entrySet()) {
+            if (optionalLocalArtifactMissing(jarConfig.getKey())) continue;
             try (var zip = new ZipFile(contentModJar(jarConfig.getKey()).toString())) {
                 for (String config : jarConfig.getValue()) {
                     var json = readConfig(zip, config);
@@ -288,6 +301,17 @@ class MixinTargetTest {
         return false;
     }
 
+    private static boolean optionalLocalArtifactMissing(String filename) throws Exception {
+        if (Files.isRegularFile(contentModJar(filename))) return false;
+        for (var item : lockfile()) {
+            var obj = item.getAsJsonObject();
+            if (obj.get("filename").getAsString().equals(filename))
+                return obj.has("optional_local") && obj.get("optional_local").getAsBoolean()
+                    && obj.get("url").isJsonNull();
+        }
+        return false;
+    }
+
     @Test void everyLibsJarIsHashLockedAndEveryLockedArtifactIsPresent() throws Exception {
         Map<String, String> expected = new LinkedHashMap<>();
         List<String> disabled = new ArrayList<>();
@@ -295,6 +319,7 @@ class MixinTargetTest {
             var obj = item.getAsJsonObject();
             String filename = obj.get("filename").getAsString();
             if (obj.has("disabled") && obj.get("disabled").getAsBoolean()) { disabled.add(filename); continue; }
+            if (optionalLocalArtifactMissing(filename)) continue;
             expected.put(filename, obj.get("sha512").getAsString());
         }
         for (var entry : expected.entrySet()) {

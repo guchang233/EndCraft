@@ -15,6 +15,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class GuiVignetteMixin {
     @Inject(method = "renderVignette", at = @At("HEAD"), cancellable = true)
     private void endcraft$skipVignette(GuiGraphics graphics, Entity camera, CallbackInfo ci) {
-        if (SkyClient.linked()) ci.cancel();
+        if (dev.skycraft.client.RenderBackend.meshOverlay()) ci.cancel();
     }
 }

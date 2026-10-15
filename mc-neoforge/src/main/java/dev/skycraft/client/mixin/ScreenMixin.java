@@ -1,6 +1,8 @@
 package dev.skycraft.client.mixin;
 
 import dev.skycraft.client.SkyClient;
+import dev.skycraft.client.RenderBackend;
+import dev.skycraft.client.TaczRefitView;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Shadow;
@@ -19,10 +21,19 @@ public abstract class ScreenMixin {
     @Shadow public int width;
     @Shadow public int height;
 
+    @Inject(method = "renderBackground", at = @At("HEAD"), cancellable = true)
+    private void endcraft$refitBackground(GuiGraphics graphics, int mouseX, int mouseY,
+                                          float partialTick, CallbackInfo ci) {
+        // TaCZ previews the gun in the hand pass, before Screen's background.
+        // The in-world menu texture otherwise darkens both that gun and the host scene.
+        if (RenderBackend.meshOverlay() && TaczRefitView.isRefit(this)) ci.cancel();
+    }
+
     @Inject(method = "renderTransparentBackground", at = @At("HEAD"), cancellable = true)
     private void endcraft$lightMenuBackdrop(GuiGraphics graphics, CallbackInfo ci) {
-        if (SkyClient.linked()) {
-            graphics.fillGradient(0, 0, width, height, 0x33000000, 0x33000000);
+        if (RenderBackend.meshOverlay()) {
+            if (!TaczRefitView.isRefit(this))
+                graphics.fillGradient(0, 0, width, height, 0x33000000, 0x33000000);
             ci.cancel();
         }
     }

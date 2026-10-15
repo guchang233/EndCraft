@@ -8,7 +8,9 @@ import urllib.request
 import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
-INDEX=Path(os.environ['LOCALAPPDATA'])/'BetterEndfield/third-party/index.json'
+INDEX=Path(os.environ.get('EFML_HOME') or Path(os.environ['LOCALAPPDATA'])/'EFML')/'modules/index.json'
+if not INDEX.is_file():
+    INDEX=Path(os.environ['LOCALAPPDATA'])/'BetterEndfield/third-party/index.json'
 if not INDEX.is_file():
     # Store Python can virtualize LocalAppData; the installed host keeps the same
     # authenticated module index in the project runtime directory.

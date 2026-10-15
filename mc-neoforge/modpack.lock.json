@@ -144,6 +144,7 @@
   },
   {
     "project": "maid-addition",
+    "optional_local": true,
     "project_id": null,
     "version_id": null,
     "version": "1.0.1-beta",

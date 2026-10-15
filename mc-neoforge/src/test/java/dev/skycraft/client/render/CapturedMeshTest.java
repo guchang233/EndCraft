@@ -6,6 +6,29 @@ import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 class CapturedMeshTest {
+    @Test void reuseRetainsExpandedStorageAcrossLargeFrames() throws Exception {
+        var mesh = new CapturedMesh();
+        for (int i = 0; i < 4000; i++) mesh.addVertex(i, 0, 0);
+        mesh.finish();
+        var field = CapturedMesh.class.getDeclaredField("data"); field.setAccessible(true);
+        Object expanded = field.get(mesh);
+        mesh.reset();
+        for (int i = 0; i < 4000; i++) mesh.addVertex(i, 0, 0);
+        assertEquals(6000, mesh.count()); assertSame(expanded, field.get(mesh));
+    }
+    @Test void reuseDropsIncompleteVerticesAndOldTransforms() {
+        var mesh = new CapturedMesh(); mesh.transform = p -> p.add(99, 99, 99);
+        mesh.addVertex(100, 100, 100); mesh.reset();
+        for (int i = 0; i < 4; i++) mesh.addVertex(i, 2, 3);
+        assertEquals(6, mesh.count()); assertEquals(0, mesh.bytes().getFloat(0));
+        mesh.reset(); assertEquals(0, mesh.count()); assertEquals(0, mesh.bytes().remaining());
+    }
+    @Test void trianglesAreNotRegroupedAsQuads() {
+        var mesh = new CapturedMesh(com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLES);
+        for (int i = 0; i < 6; i++) mesh.addVertex(i, 0, 0);
+        assertEquals(6, mesh.count());
+        for (int i = 0; i < 6; i++) assertEquals(i, mesh.bytes().getFloat(i * Proto.REN_VERTEX_BYTES));
+    }
     @Test void quadsBecomeTrianglesWithProtocolColorAndLighting() {
         var mesh = new CapturedMesh();
         for (int i = 0; i < 4; i++)

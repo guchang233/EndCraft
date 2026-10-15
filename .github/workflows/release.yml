@@ -46,6 +46,9 @@ jobs:
         shell: cmd
         run: tools\build-native.cmd
 
+      - name: Test installation and dependency tools
+        run: python -m unittest discover -s tools -p "test_*.py"
+
       - name: Build and test Fabric guest
         shell: cmd
         working-directory: mc
@@ -82,7 +85,7 @@ jobs:
           path: mc-neoforge/build/reports/tests/
 
       - name: Package release
-        run: python tools/package-release.py --module endcraft.gameplay34
+        run: python tools/package-release.py --module endcraft.gameplay38
 
       - name: Upload build output
         uses: actions/upload-artifact@v5

@@ -47,6 +47,12 @@ using NativeKey=bool(__fastcall*)(int,void*);
 NativeKey nextNativeKey=nullptr,nextNativeKeyDown=nullptr,nextNativeKeyUp=nullptr;
 using NativeBindingTick=void(__fastcall*)(void*,void*);
 NativeBindingTick nextNativeBindingTick=nullptr;
+NativeBindingTick nextNativeUiTick=nullptr;
+BE_ResolvedMethodV1 nativeUiTick{};
+void __fastcall onNativeUiTick(void* instance,void* info) {
+    if((!info||info==nativeUiTick.method_info)&&gameplay.suppressNativeUi()) return;
+    if(nextNativeUiTick) nextNativeUiTick(instance,info);
+}
 void __fastcall onNativeBindingTick(void* instance,void* info) {
     if(!gameplay.suppressNativeBindings()&&nextNativeBindingTick) nextNativeBindingTick(instance,info);
 }
@@ -332,6 +338,14 @@ BE_Result start() {
         }
         gameplay.inputHooksReady(installed);
         if(!installed) {host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;}
+        // The host's own frame dispatcher is the first link and still runs after
+        // this hook returns. Only Unity UI event dispatch is suppressed.
+        BE_MethodDescriptorV1 uiDescriptor{"UnityEngine.UI.dll","UnityEngine.EventSystems","EventSystem","Update",nullptr,"System.Void",0};
+        if(api->resolve_method(api->context,&uiDescriptor,&nativeUiTick)!=BE_Result_Ok||
+            host.hooks->create(host.hooks->context,kId,nativeUiTick.method_pointer,reinterpret_cast<void*>(onNativeUiTick),reinterpret_cast<void**>(&nextNativeUiTick),&handle)!=BE_Result_Ok) {
+            host.hooks->disable_module(host.hooks->context,kId);return BE_Result_NotFound;
+        }
+        gameplay.uiHookReady(true);
         BE_MethodDescriptorV1 bindingDescriptor{"Input.Beyond.dll","Beyond.Input","InputManager","_OnAfterInputUpdate",nullptr,"System.Void",0};
         BE_ResolvedMethodV1 bindingResolved{};
         if(api->resolve_method(api->context,&bindingDescriptor,&bindingResolved)!=BE_Result_Ok||
@@ -448,6 +462,12 @@ BE_Result BE_CALL message(const char* request,const char* body) {
         }
 #endif
 #ifdef ENDCRAFT_GAMEPLAY
+        if(action=="hud_tint") {
+            const auto value=json::parse(body).at("value").get<float>();
+            if(!std::isfinite(value)||value<0||value>1) return BE_Result_InvalidArgument;
+            gameplay.hudTint(value);
+            return host.reply(host.context,request,BE_Result_Ok,"{\"hud_tint_updated\":true}");
+        }
         if(action=="input_exclusive") {
             gameplay.inputExclusive(json::parse(body).at("enabled").get<bool>());
             return host.reply(host.context,request,BE_Result_Ok,"{\"input_mode_queued\":true}");

@@ -1,4 +1,4 @@
-﻿import java.lang.instrument.Instrumentation;
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
@@ -7,6 +7,8 @@ import com.sun.tools.attach.VirtualMachine;
 /** Diagnostics through the supported JVM attach API, restricted by the wrapper to our NeoForge guest. */
 public class EndCraftNeoTestAgent {
     static ClassLoader loader;
+    static Object atlasReadback;
+    static int atlasProbeTexture;
     static Object call(Object o, String method, Object... args) throws Exception {
         Class<?> cls = o instanceof Class<?> c ? c : o.getClass();
         for (Method m : cls.getMethods()) {
@@ -17,7 +19,7 @@ public class EndCraftNeoTestAgent {
                 if (type.isPrimitive()) type = Map.<Class<?>,Class<?>>of(int.class,Integer.class,float.class,Float.class,double.class,Double.class,boolean.class,Boolean.class,long.class,Long.class).getOrDefault(type,type);
                 if (args[i] != null && !type.isInstance(args[i])) match = false;
             }
-            if (match) return m.invoke(o instanceof Class<?> ? null : o, args);
+            if (match) {m.setAccessible(true);return m.invoke(o instanceof Class<?> ? null : o, args);}
         }
         throw new NoSuchMethodException(cls.getName()+"."+method);
     }
@@ -25,6 +27,49 @@ public class EndCraftNeoTestAgent {
     static void log(String text) {
         try {Files.writeString(Path.of("endcraft-neo-test.txt"), text+"\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);}
         catch(Exception e) {e.printStackTrace();}
+    }
+    static void maidWalk(Object mc, Object player) throws Exception {
+        Object server=call(mc,"getSingleplayerServer");
+        if(server==null)throw new IllegalStateException("Own bridge server required");
+        Object uuid=call(player,"getUUID");
+        new Thread(()->{
+            Object[] maid={null};int[] samples={0},missing={0};double[] minGap={Double.POSITIVE_INFINITY},travel={0};
+            try {
+                var spawn=new java.util.concurrent.CompletableFuture<Void>();
+                call(server,"execute",(Runnable)()->{try {
+                    Object sp=call(call(server,"getPlayerList"),"getPlayer",uuid),level=call(sp,"serverLevel");
+                    Object id=call(cls("net.minecraft.resources.ResourceLocation"),"parse","touhou_little_maid:maid");
+                    Object type=call(cls("net.minecraft.core.registries.BuiltInRegistries").getField("ENTITY_TYPE").get(null),"get",id);
+                    maid[0]=call(type,"create",level);
+                    if(maid[0]==null)throw new IllegalStateException("Maid unavailable");
+                    call(maid[0],"setNoAi",true);
+                    double x=(double)call(sp,"getX"),y=(double)call(sp,"getY"),z=(double)call(sp,"getZ");
+                    call(maid[0],"setPos",x,y+1,z);
+                    call(level,"addFreshEntity",maid[0]);
+                    log("maid_walk spawned temporary maid smooth="+call(cls("dev.skycraft.world.SkyCollision"),"usesSmoothCollider",maid[0]));
+                    spawn.complete(null);
+                }catch(Throwable e){spawn.completeExceptionally(e);}});
+                spawn.get(10,java.util.concurrent.TimeUnit.SECONDS);
+                for(int tick=0;tick<120;tick++) {
+                    var step=new java.util.concurrent.CompletableFuture<Void>();
+                    call(server,"execute",(Runnable)()->{try {
+                        Object e=maid[0];
+                        Object mover=cls("net.minecraft.world.entity.MoverType").getField("SELF").get(null);
+                        Object move=cls("net.minecraft.world.phys.Vec3").getConstructor(double.class,double.class,double.class).newInstance(.06,-.0784,0d);
+                        double before=(double)call(e,"getX");call(e,"move",mover,move);
+                        travel[0]+=Math.abs((double)call(e,"getX")-before);
+                        Object box=call(call(e,"getBoundingBox"),"inflate",1d,2d,1d);
+                        var tris=new ArrayList<>();call(cls("dev.skycraft.world.SkyCollision"),"trianglesNear",box,tris);
+                        double ground=(double)call(cls("dev.skycraft.world.TriCollider"),"groundAt",tris,(double)call(e,"getX"),(double)call(e,"getY")+1,(double)call(e,"getZ"),0d);
+                        if(Double.isFinite(ground)){samples[0]++;minGap[0]=Math.min(minGap[0],(double)call(e,"getY")-ground);}else missing[0]++;
+                        step.complete(null);
+                    }catch(Throwable e){step.completeExceptionally(e);}});
+                    step.get(5,java.util.concurrent.TimeUnit.SECONDS);Thread.sleep(50);
+                }
+                log("maid_walk samples="+samples[0]+" missing="+missing[0]+" min_floor_gap="+minGap[0]+" distance="+travel[0]);
+            }catch(Throwable e){log("maid_walk error="+e);}
+            finally{try{call(server,"execute",(Runnable)()->{try{if(maid[0]!=null)call(maid[0],"discard");log("maid_walk temporary maid removed");}catch(Throwable e){log("maid cleanup="+e);}});}catch(Throwable ignored){}}
+        },"endcraft-maid-terrain-check").start();
     }
     public static void main(String[] args) throws Exception {
         if(args.length != 3) throw new IllegalArgumentException("PID, JAR, operation");
@@ -49,13 +94,44 @@ public class EndCraftNeoTestAgent {
         log("key_watch ended");
     }
     public static void agentmain(String op, Instrumentation inst) throws Exception {
-        if(!Set.of("status","open_world","fixture","ship","stop","third_person","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe","keys_probe","inject_quote","inject_f1","close_screen","key_watch").contains(op)) throw new IllegalArgumentException(op);
+        if(!Set.of("status","open_world","render_test_world","loading_probe","abort_test_load","continue_world","render_test_ship","plot_transform_audit","atlas_request","atlas_poll","mesh_benchmark","shader_mesh","shader_preview","particle_seed","particle_audit","capture_frame","inventory","fixture","ship","stop","third_person","first_person","equip_gun","gun_refit","compat_audit","maid_walk","render_audit","overlay_audit","stage_probe","pick_probe","rendertype_probe","keys_probe","inject_quote","inject_f1","close_screen","key_watch").contains(op)) throw new IllegalArgumentException(op);
         Class<?> minecraft = Arrays.stream(inst.getAllLoadedClasses()).filter(c -> c.getName().equals("net.minecraft.client.Minecraft")).findFirst().orElseThrow();
         loader = minecraft.getClassLoader(); Object mc = call(minecraft,"getInstance");
+        if(op.equals("abort_test_load")) {
+            Object server=call(mc,"getSingleplayerServer");
+            if(server==null || !"EndCraft-Render-Test".equals(call(call(server,"getWorldData"),"getLevelName")))throw new IllegalStateException("Isolated render test world required");
+            call(server,"halt",true);log("saved isolated render test world before aborting stuck load");
+            new Thread(()->{try{Thread.sleep(1000);}catch(InterruptedException ignored){}System.exit(0);},"endcraft-test-shutdown").start();return;
+        }
+        if(op.equals("loading_probe")) {
+            Object overlay=call(mc,"getOverlay"),server=call(mc,"getSingleplayerServer");
+            log("loading_probe overlay="+(overlay==null?"none":overlay.getClass().getName())+" serverReady="+(server==null?"none":call(server,"isReady")));
+            if(overlay!=null) {
+                var field=cls("net.minecraft.client.gui.screens.LoadingOverlay").getDeclaredField("reload");field.setAccessible(true);
+                log("loading_probe reload_done="+call(field.get(overlay),"isDone"));
+            }
+            return;
+        }
         if(op.equals("key_watch")) { var t=new Thread(()->{try{keyWatch(mc);}catch(Throwable e){log("key_watch error="+e);}},"endcraft-key-watch");t.setDaemon(true);t.start();return; }
         call(mc,"execute",(Runnable)() -> {
             try {
                 if(op.equals("stop")) {call(mc,"stop");return;}
+                if(op.equals("render_test_world")) {
+                    if(call(mc,"getOverlay") != null)throw new IllegalStateException("Wait until resource loading overlay has closed");
+                    if(mc.getClass().getField("level").get(mc) != null)throw new IllegalStateException("Preserve the open world");
+                    Object title=cls("net.minecraft.client.gui.screens.TitleScreen").getConstructor().newInstance();
+                    call(mc,"setScreen",title);Object flows=call(mc,"createWorldOpenFlows");String name="EndCraft-Render-Test";
+                    if(Files.isDirectory(Path.of("saves",name))) {call(flows,"openWorld",name,(Runnable)()->{});return;}
+                    Class<?> gameType=cls("net.minecraft.world.level.GameType"),difficulty=cls("net.minecraft.world.Difficulty"),rules=cls("net.minecraft.world.level.GameRules"),configuration=cls("net.minecraft.world.level.WorldDataConfiguration");
+                    Object settings=cls("net.minecraft.world.level.LevelSettings").getConstructor(String.class,gameType,boolean.class,difficulty,boolean.class,rules,configuration).newInstance(name,gameType.getField("CREATIVE").get(null),false,difficulty.getField("PEACEFUL").get(null),true,rules.getConstructor().newInstance(),configuration.getField("DEFAULT").get(null));
+                    Object options=cls("net.minecraft.world.level.levelgen.WorldOptions").getConstructor(long.class,boolean.class,boolean.class).newInstance(0L,false,false);
+                    java.util.function.Function<Object,Object> dimensions=registries->{try {
+                        Object key=cls("net.minecraft.core.registries.Registries").getField("WORLD_PRESET").get(null);
+                        Object preset=cls("net.minecraft.world.level.levelgen.presets.WorldPresets").getField("FLAT").get(null);
+                        return call(call(call(call(registries,"lookupOrThrow",key),"getOrThrow",preset),"value"),"createWorldDimensions");
+                    }catch(Exception e){throw new RuntimeException(e);}};
+                    call(flows,"createFreshLevel",name,settings,options,dimensions,title);log("created isolated render test world");return;
+                }
                 if(op.equals("open_world")) {
                     if(mc.getClass().getField("level").get(mc) != null) throw new IllegalStateException("Preserve the open world");
                     call(mc,"setScreen",cls("net.minecraft.client.gui.screens.TitleScreen").getConstructor().newInstance());
@@ -65,6 +141,171 @@ public class EndCraftNeoTestAgent {
                 Object screen = mc.getClass().getField("screen").get(mc);
                 Object overlay=call(mc,"getOverlay");
                 log("operation="+op+" overlay="+(overlay==null?"none":overlay.getClass().getName())+" screen="+(screen==null?"none":screen.getClass().getName())+" player="+(player==null?"none":call(player,"position")));
+                if(op.equals("first_person")) {
+                    if(player==null)throw new IllegalStateException("Player required");
+                    Object options=mc.getClass().getField("options").get(mc);
+                    call(mc,"setScreen",(Object)null);
+                    call(options,"setCameraType",cls("net.minecraft.client.CameraType").getField("FIRST_PERSON").get(null));return;
+                }
+                if(op.equals("compat_audit")) {
+                    if(player==null)throw new IllegalStateException("Player required");
+                    Object options=mc.getClass().getField("options").get(mc);
+                    log("compat camera="+call(options,"getCameraType")+" held="+call(player,"getMainHandItem"));
+                    for(Object entity:(Iterable<?>)call(level,"entitiesForRendering"))if(entity.getClass().getName().contains("Maid"))
+                        log("compat maid="+call(entity,"position")+" smooth="+call(cls("dev.skycraft.world.SkyCollision"),"usesSmoothCollider",entity));
+                    return;
+                }
+                if(op.equals("maid_walk")) {if(player==null)throw new IllegalStateException("Player required");maidWalk(mc,player);return;}
+                if(op.equals("equip_gun")) {
+                    if(player==null)throw new IllegalStateException("Player required");
+                    Object inventory=call(player,"getInventory");
+                    for(int slot=0;slot<9;slot++) {
+                        Object item=call(inventory,"getItem",slot);
+                        if(call(cls("com.tacz.guns.api.item.IGun"),"getIGunOrNull",item)==null)continue;
+                        inventory.getClass().getField("selected").setInt(inventory,slot);
+                        Object packet=cls("net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket").getConstructor(int.class).newInstance(slot);
+                        call(call(mc,"getConnection"),"send",packet);
+                        log("equipped existing TaCZ hotbar slot="+slot);return;
+                    }
+                    throw new IllegalStateException("No TaCZ gun in hotbar; inventory unchanged");
+                }
+                if(op.equals("gun_refit")) {
+                    if(player==null)throw new IllegalStateException("Player required");
+                    Object item=call(player,"getMainHandItem");
+                    if(call(cls("com.tacz.guns.api.item.IGun"),"getIGunOrNull",item)==null)throw new IllegalStateException("Equip a TaCZ gun before this check");
+                    call(mc,"setScreen",cls("com.tacz.guns.client.gui.GunRefitScreen").getConstructor().newInstance());
+                    log("gun_refit camera="+call(mc.getClass().getField("options").get(mc),"getCameraType"));return;
+                }
+                if(op.equals("continue_world")) {
+                    if(screen != null && screen.getClass().getName().endsWith("BackupConfirmScreen")) {
+                        Object callback=cls("dev.skycraft.client.mixin.BackupConfirmAccess").getMethod("endcraft$onProceed").invoke(screen);
+                        for(Method method:callback.getClass().getMethods()) if(method.getName().equals("proceed")) {
+                            method.setAccessible(true);method.invoke(callback,false,false);break;
+                        }
+                    }
+                    return;
+                }
+                if(op.equals("capture_frame")) {
+                    Object target=call(mc,"getMainRenderTarget");
+                    int width=(int)target.getClass().getField("width").get(target),height=(int)target.getClass().getField("height").get(target);
+                    Class<?> gl=cls("org.lwjgl.opengl.GL11");
+                    int previous=(int)gl.getMethod("glGetInteger",int.class).invoke(null,0x8069);
+                    Object image=cls("com.mojang.blaze3d.platform.NativeImage").getConstructor(int.class,int.class,boolean.class).newInstance(width,height,false);
+                    try {
+                        gl.getMethod("glBindTexture",int.class,int.class).invoke(null,0x0DE1,call(target,"getColorTextureId"));
+                        call(image,"downloadTexture",0,false);
+                        call(image,"flipY");
+                        Path output=Path.of("endcraft-render-frame.png");call(image,"writeToFile",output);
+                        log("captured_frame="+output.toAbsolutePath()+" backend="+call(cls("dev.skycraft.client.RenderBackend"),"preview"));
+                    } finally {
+                        call(image,"close");gl.getMethod("glBindTexture",int.class,int.class).invoke(null,0x0DE1,previous);
+                    }
+                    return;
+                }
+                if(op.equals("inventory")) {
+                    if(player==null)throw new IllegalStateException("World required");
+                    call(mc,"setScreen",cls("net.minecraft.client.gui.screens.inventory.InventoryScreen").getConstructor(cls("net.minecraft.world.entity.player.Player")).newInstance(player));return;
+                }
+                if(op.equals("shader_mesh") || op.equals("shader_preview")) {
+                    if(player==null)throw new IllegalStateException("World required");
+                    Object source=call(player,"createCommandSourceStack");
+                    log("render_backend_switch="+call(cls("dev.skycraft.client.RenderBackend"),"select",source,op.equals("shader_preview")));
+                    return;
+                }
+                if(op.equals("atlas_request")) {
+                    if(player==null || call(mc,"getOverlay")!=null)throw new IllegalStateException("Wait until test world and resources have loaded");
+                    if(atlasReadback!=null)throw new IllegalStateException("Atlas probe already pending");
+                    Class<?> gl=cls("org.lwjgl.opengl.GL11");
+                    int old=(int)call(gl,"glGetInteger",0x8069);
+                    try {
+                        atlasProbeTexture=(int)call(gl,"glGenTextures");call(gl,"glBindTexture",0x0DE1,atlasProbeTexture);
+                        var pixels=java.nio.ByteBuffer.allocateDirect(16);
+                        for(int i=0;i<16;i++)pixels.put((byte)(i+1));pixels.flip();
+                        call(gl,"glTexImage2D",0x0DE1,0,0x8058,2,2,0,0x1908,0x1401,pixels);
+                        var constructor=cls("dev.skycraft.client.render.TextureReadback").getDeclaredConstructor();constructor.setAccessible(true);
+                        atlasReadback=constructor.newInstance();var method=atlasReadback.getClass().getDeclaredMethod("request",int.class,int.class,int.class);method.setAccessible(true);
+                        method.invoke(atlasReadback,atlasProbeTexture,2,2);log("atlas_request queued 16 known RGBA bytes");
+                    } finally {call(gl,"glBindTexture",0x0DE1,old);}
+                    return;
+                }
+                if(op.equals("atlas_poll")) {
+                    if(atlasReadback==null)throw new IllegalStateException("Request atlas probe first");
+                    var pixels=java.nio.ByteBuffer.allocateDirect(16);
+                    var method=atlasReadback.getClass().getDeclaredMethod("poll",java.nio.ByteBuffer.class);method.setAccessible(true);
+                    if(!(boolean)method.invoke(atlasReadback,pixels)){log("atlas_poll GPU pending");return;}
+                    boolean correct=pixels.remaining()==16;
+                    for(int i=0;i<16;i++)correct&=pixels.get(i)==(byte)(i+1);
+                    byte[] actual=new byte[16];pixels.duplicate().get(actual);log("atlas_poll actual="+java.util.Arrays.toString(actual)+" gl_error="+call(cls("org.lwjgl.opengl.GL11"),"glGetError"));
+                    var close=atlasReadback.getClass().getDeclaredMethod("close");close.setAccessible(true);close.invoke(atlasReadback);atlasReadback=null;
+                    call(cls("org.lwjgl.opengl.GL11"),"glDeleteTextures",atlasProbeTexture);
+                    log("atlas_poll bytes_match="+correct);return;
+                }
+                if(op.equals("mesh_benchmark")) {
+                    Object server=call(mc,"getSingleplayerServer");
+                    if(server==null || !"EndCraft-Render-Test".equals(call(call(server,"getWorldData"),"getLevelName")))throw new IllegalStateException("Isolated render test world required");
+                    if((boolean)call(cls("dev.skycraft.client.SkyClient"),"linked"))throw new IllegalStateException("Offline diagnostic required");
+                    Class<?> exporter=cls("dev.skycraft.client.render.WorldExporter");
+                    var method=exporter.getDeclaredMethod("exportSection",minecraft,long.class);method.setAccessible(true);
+                    int x=(int)Math.floor((double)call(player,"getX")/16),z=(int)Math.floor((double)call(player,"getZ")/16);
+                    long key=(long)call(cls("net.minecraft.core.SectionPos"),"asLong",x,Math.floorDiv((int)(double)call(player,"getY"),16),z);
+                    for(int i=0;i<3;i++)method.invoke(null,mc,key);
+                    long start=System.nanoTime();for(int i=0;i<10;i++)method.invoke(null,mc,key);
+                    double ms=(System.nanoTime()-start)/1_000_000d/10;
+                    var field=exporter.getDeclaredField("SECTION_MESH");field.setAccessible(true);Object mesh=field.get(null);
+                    var count=mesh.getClass().getDeclaredMethod("count");count.setAccessible(true);
+                    log("mesh_benchmark avg_ms="+ms+" vertices="+count.invoke(mesh)+" samples=10 (meshing only, no host)");return;
+                }
+                if(op.equals("render_test_ship")) {
+                    Object server=call(mc,"getSingleplayerServer");
+                    if(server==null || !"EndCraft-Render-Test".equals(call(call(server,"getWorldData"),"getLevelName")))throw new IllegalStateException("Isolated render test world required");
+                    Object uuid=call(player,"getUUID");
+                    call(server,"execute",(Runnable)()->{try {
+                        Object sp=call(call(server,"getPlayerList"),"getPlayer",uuid);
+                        Object ships=call(cls("dev.ryanhcode.sable.api.sublevel.SubLevelContainer"),"getContainer",call(sp,"level"));
+                        for(Object ship:(List<?>)call(ships,"getAllSubLevels"))if("EndCraft_PerfShip".equals(call(ship,"getName"))){log("render test ship already exists");return;}
+                        call(call(server,"getCommands"),"performPrefixedCommand",call(sp,"createCommandSourceStack"),"execute at @s positioned ~ ~3 ~-3 run sable spawn platform 2 minecraft:oak_planks EndCraft_PerfShip");
+                        log("isolated render test ship submitted");
+                    }catch(Throwable error){log("render test ship error="+error);}});
+                    return;
+                }
+                if(op.equals("plot_transform_audit")) {
+                    Object container=call(cls("dev.ryanhcode.sable.api.sublevel.SubLevelContainer"),"getContainer",level);
+                    Class<?> vec=cls("net.minecraft.world.phys.Vec3"),mappingClass=cls("dev.skycraft.client.render.PlotTransform");
+                    var ctor=mappingClass.getDeclaredConstructor(vec,vec,java.util.function.UnaryOperator.class);ctor.setAccessible(true);
+                    var forBlock=mappingClass.getDeclaredMethod("forBlock",int.class,int.class,int.class);forBlock.setAccessible(true);
+                    double maxError=0;int samples=0;
+                    for(Object ship:(List<?>)call(container,"getAllSubLevels")) {
+                        Object pose=call(ship,"renderPose",0f),plot=call(ship,"getPlot"),centre=call(vec,"atCenterOf",call(plot,"getCenterBlock"));
+                        java.util.function.UnaryOperator<Object> source=p->{try{return call(pose,"transformPosition",p);}catch(Exception e){throw new RuntimeException(e);}};
+                        Object origin=call(player,"position"),mapping=ctor.newInstance(centre,origin,source);
+                        int bx=(int)Math.floor(vec.getField("x").getDouble(centre)),by=(int)Math.floor(vec.getField("y").getDouble(centre)),bz=(int)Math.floor(vec.getField("z").getDouble(centre));
+                        for(int i=-8;i<=8;i++) {
+                            Object local=vec.getConstructor(double.class,double.class,double.class).newInstance(.125,.375,.625);
+                            Object expected=call(source.apply(call(local,"add",(double)(bx+i),(double)by,(double)(bz-i))),"subtract",origin);
+                            Object actual;
+                            @SuppressWarnings("unchecked") var transform=(java.util.function.UnaryOperator<Object>)forBlock.invoke(mapping,bx+i,by,bz-i);
+                            actual=transform.apply(local);maxError=Math.max(maxError,(double)call(expected,"distanceTo",actual));samples++;
+                        }
+                    }
+                    log("plot_transform_audit samples="+samples+" max_error="+maxError);return;
+                }
+                if(op.equals("particle_seed")) {
+                    if(level==null || player==null)throw new IllegalStateException("World required");
+                    Object marker=cls("net.minecraft.core.particles.ParticleTypes").getField("BLOCK_MARKER").get(null);
+                    Object block=cls("net.minecraft.world.level.block.Blocks").getField("BARRIER").get(null);
+                    Object option=cls("net.minecraft.core.particles.BlockParticleOption").getConstructor(cls("net.minecraft.core.particles.ParticleType"),cls("net.minecraft.world.level.block.state.BlockState")).newInstance(marker,call(block,"defaultBlockState"));
+                    double x=(double)call(player,"getX"),y=(double)call(player,"getY"),z=(double)call(player,"getZ");
+                    call(level,"addParticle",option,x,y+1,z+2,0d,0d,0d);log("seeded barrier marker particle");return;
+                }
+                if(op.equals("particle_audit")) {
+                    if(level==null || player==null)throw new IllegalStateException("World required");
+                    Class<?> buffers=cls("dev.skycraft.client.render.CaptureBuffers");var constructor=buffers.getDeclaredConstructor();constructor.setAccessible(true);Object capture=constructor.newInstance();
+                    var captureMethod=cls("dev.skycraft.client.render.ParticleExporter").getDeclaredMethod("capture",minecraft,float.class,cls("net.minecraft.world.phys.Vec3"),buffers);
+                    captureMethod.setAccessible(true);captureMethod.invoke(null,mc,0f,call(player,"position"),capture);
+                    var field=buffers.getDeclaredField("batches");field.setAccessible(true);var batches=(Map<?,?>)field.get(capture);int vertices=0;
+                    for(Object mesh:batches.values()){var count=mesh.getClass().getDeclaredMethod("count");count.setAccessible(true);vertices+=(int)count.invoke(mesh);}
+                    log("particle_capture_batches="+batches.size()+" vertices="+vertices+" keys="+batches.keySet());return;
+                }
                 if(level != null) {
                     Object container = call(cls("dev.ryanhcode.sable.api.sublevel.SubLevelContainer"),"getContainer",level);
                     var ships=(List<?>)call(container,"getAllSubLevels");log("client_ships="+ships.size());

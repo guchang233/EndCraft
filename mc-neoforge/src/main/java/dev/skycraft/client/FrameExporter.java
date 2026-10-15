@@ -12,12 +12,21 @@ import org.lwjgl.opengl.GL32;
 
 /** Bounded OpenGL PBO readback for 1.21.1; never waits on an unfinished GPU fence. */
 public final class FrameExporter {
-    private static final class Slot { int buffer, width, height; long fence, frame; }
+    private static final class Slot { int buffer, width, height; long fence, frame; boolean raster; }
     private static final Slot[] SLOTS = {new Slot(), new Slot(), new Slot()};
     private static long nextFrame, lastCapture;
+    private static ByteBuffer straightPixels;
+    private static boolean lastRaster;
     public static void capture(Minecraft mc) {
         int previousBuffer = GL11.glGetInteger(GL21.GL_PIXEL_PACK_BUFFER_BINDING);
         try {
+            boolean raster = RenderBackend.preview();
+            if (lastRaster != raster) {
+                // Do not publish an opaque old frame after switching back to mesh overlay.
+                for (Slot s : SLOTS) if (s.fence != 0) { GL32.glDeleteSync(s.fence); s.fence = 0; }
+                lastRaster = raster;
+                lastCapture = 0;
+            }
             Slot newest = null;
             for (Slot s : SLOTS) if (s.fence != 0) {
                 int result = GL32.glClientWaitSync(s.fence, 0, 0);
@@ -30,7 +39,13 @@ public final class FrameExporter {
                 ByteBuffer view = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY, (long) ready.width * ready.height * 4, null);
                 if (view != null) {
                     try { SkyLink.withSegment(shm -> { if (shm != null) {
-                        MemorySegment.copy(MemorySegment.ofBuffer(view), 0, shm, SkyLink.overlayBackSlotOffset(), view.remaining());
+                        if (straightPixels == null || straightPixels.capacity() != view.remaining())
+                            straightPixels = ByteBuffer.allocateDirect(view.remaining());
+                        straightPixels.clear();
+                        if (ready.raster) OverlayPixels.opaque(view, straightPixels);
+                        else OverlayPixels.straighten(view, straightPixels);
+                        straightPixels.flip();
+                        MemorySegment.copy(MemorySegment.ofBuffer(straightPixels), 0, shm, SkyLink.overlayBackSlotOffset(), straightPixels.remaining());
                         SkyLink.publishOverlay(ready.width, ready.height, true, ready.frame);
                     } return null; }); } finally { GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER); }
                 }
@@ -50,15 +65,25 @@ public final class FrameExporter {
             }
             int previousFramebuffer = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
             int previousAlignment = GL11.glGetInteger(GL11.GL_PACK_ALIGNMENT);
+            int previousRowLength = GL11.glGetInteger(GL11.GL_PACK_ROW_LENGTH);
+            int previousSkipRows = GL11.glGetInteger(GL11.GL_PACK_SKIP_ROWS);
+            int previousSkipPixels = GL11.glGetInteger(GL11.GL_PACK_SKIP_PIXELS);
             try {
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, target.frameBufferId);
                 GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+                GL11.glPixelStorei(GL11.GL_PACK_ROW_LENGTH, 0);
+                GL11.glPixelStorei(GL11.GL_PACK_SKIP_ROWS, 0);
+                GL11.glPixelStorei(GL11.GL_PACK_SKIP_PIXELS, 0);
                 GL11.glReadPixels(0, 0, free.width, free.height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L);
             } finally {
                 GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, previousAlignment);
+                GL11.glPixelStorei(GL11.GL_PACK_ROW_LENGTH, previousRowLength);
+                GL11.glPixelStorei(GL11.GL_PACK_SKIP_ROWS, previousSkipRows);
+                GL11.glPixelStorei(GL11.GL_PACK_SKIP_PIXELS, previousSkipPixels);
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousFramebuffer);
             }
             free.frame = ++nextFrame;
+            free.raster = raster;
             free.fence = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             lastCapture = now;
         } finally { GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, previousBuffer); }

@@ -610,6 +610,14 @@ public final class SkyLink {
 	}
 
 	// ---- render ring (produce) -------------------------------------------------------------
+	/** Avoid expensive per-frame captures when the host has not consumed existing meshes. */
+	public static synchronized boolean renderBackedUp() {
+		MemorySegment s = shm;
+		if (s == null) return false;
+		long head = s.get(JAVA_LONG, OFF_RENDER_RING + RR_HEAD);
+		long tail = (long) LONG.getAcquire(s, OFF_RENDER_RING + RR_TAIL);
+		return head - tail >= RR_DATA_BYTES / 2;
+	}
 
 	/**
 	 * Writes one render message ({@code header} bytes then {@code body} bytes) into the render ring,

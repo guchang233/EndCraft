@@ -9,10 +9,13 @@ import subprocess
 from datetime import datetime
 
 ROOT=Path(__file__).resolve().parents[1]
+KNOWN_BUILDS={
+    'ab00f1c41e13edf9816f142b166e3c2536d5bc7707992c39e5ed52d1cc888e2c':'1.6.3',
+}
 
 def main(game,output):
     files={}
-    for name in ('Endfield.exe','UnityPlayer.dll','GameAssembly.dll'):
+    for name in ('Endfield.exe','UnityPlayer.dll','GameAssembly.dll','Endfield_Data/il2cpp_data/Metadata/global-metadata.dat'):
         path=game/name
         if path.exists():
             digest=hashlib.sha256()
@@ -29,10 +32,11 @@ def main(game,output):
         elif 'Direct3D11' in text:api='D3D11'
         elif 'Direct3D12' in text:api='D3D12'
     proxy=game/'BetterEndfield-xinput1_4-host.status'
+    game_hash=files.get('GameAssembly.dll',{}).get('sha256','')
     result={
         'local_time':datetime.now().astimezone().isoformat(),
         'game_directory':str(game.resolve()),'game_build_files':files,
-        'game_release_version':'not_exposed_by_inspected_metadata',
+        'game_release_version':KNOWN_BUILDS.get(game_hash,'unrecognized_build'),
         'unity_engine_version':engine,'last_log_graphics_api':api,
         'last_log_modified_time':datetime.fromtimestamp(log.stat().st_mtime).astimezone().isoformat() if log.exists() else None,
         'anti_cheat_directory_present':(game/'AntiCheatExpert').is_dir(),

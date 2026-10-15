@@ -81,5 +81,25 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(local.read_bytes(),(installer.SETTINGS/'third-party/index.json').read_bytes())
         installer.game_running=lambda:False;installer.uninstall()
         self.assertFalse(local.exists())
+    def test_efml_takeover_preserves_proxy_and_user_configuration(self):
+        installer.install(self.game)
+        proxy=self.game/'xinput1_4.dll';proxy.write_bytes(b'efml proxy')
+        (self.game/'EFML.xinput.install.json').write_text(json.dumps({
+            'Product':'EFML.XInputProxy','ProxyFile':'xinput1_4.dll','Sha256':installer.sha(proxy)
+        }))
+        user_ini=installer.SETTINGS/'BetterEndfield.ini';user_ini.write_text('efml settings')
+        user_index=installer.SETTINGS/'third-party/index.json';user_index.write_text('{"efml":true}')
+        (installer.ROOT/'build/framework/BetterEndfield.Host.dll').write_bytes(b'host v2')
+        installer.update()
+        self.assertEqual(proxy.read_bytes(),b'efml proxy')
+        self.assertEqual(user_ini.read_text(),'efml settings')
+        self.assertEqual(user_index.read_text(),'{"efml":true}')
+        state=json.loads(installer.STATE.read_text())
+        owned={Path(item['path']).resolve() for item in state['files']}
+        self.assertTrue(installer.efml_managed_paths(self.game).isdisjoint(owned))
+        installer.uninstall()
+        self.assertTrue(proxy.exists())
+        self.assertTrue(user_ini.exists())
+        self.assertTrue(user_index.exists())
 
 if __name__=='__main__': unittest.main()

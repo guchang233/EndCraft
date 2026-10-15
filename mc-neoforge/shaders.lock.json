@@ -1,0 +1,18 @@
+[
+  {
+    "project": "iris",
+    "version": "1.8.14-beta.1+1.21.1-neoforge",
+    "version_id": "KduFYu4t",
+    "filename": "iris-neoforge-1.8.14-beta.1+mc1.21.1.jar",
+    "url": "https://cdn.modrinth.com/data/YL57xq9U/versions/KduFYu4t/iris-neoforge-1.8.14-beta.1%2Bmc1.21.1.jar",
+    "sha512": "33fddb430e16222902eac75b8b3d57c381b0f3cc729f3b56c4628df12ca108f23a0b11e2feb167923d6d14d1fc7e8ee1a977ec421b19d1951bdca74c4092b9c5"
+  },
+  {
+    "project": "sodium",
+    "version": "mc1.21.1-0.8.12-neoforge",
+    "version_id": "S3DUMfBo",
+    "filename": "sodium-neoforge-0.8.12+mc1.21.1.jar",
+    "url": "https://cdn.modrinth.com/data/AANobbMI/versions/S3DUMfBo/sodium-neoforge-0.8.12%2Bmc1.21.1.jar",
+    "sha512": "2a689e1b1e16acc790c011b42ec21958956207c3b49cb99cb5c006e639786adf1cc36559f9840e2c1d27485c00da9712d34020fa4279eb6810eaa54bf20b19b0"
+  }
+]

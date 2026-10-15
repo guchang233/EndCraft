@@ -122,6 +122,25 @@ class TriColliderTest {
 	}
 
 	@Test
+	void droppedMobLandsOnFractionalTerrainAndKeepsSupportWhileWalking() {
+		List<SkyTri> t = new ArrayList<>();
+		flat(t, -12, -12, 12, 12, .713);
+		double x = -4, y = 2, velocity = 0;
+		boolean grounded = false;
+		for (int tick = 0; tick < 100; tick++) {
+			velocity = (velocity - .08) * .98;
+			double[] move = TriCollider.resolve(t, x, y, 0, .3, 1.35, .6, grounded, .08, velocity, 0);
+			grounded = move[1] != velocity && velocity < 0;
+			x += move[0]; y += move[1];
+			if (grounded) velocity = 0;
+			assertTrue(y >= .713 - 1e-6, "mob cannot fall through the thin fractional surface");
+		}
+		assertEquals(.713, y, 1e-6);
+		assertTrue(grounded);
+		assertTrue(x > 3);
+	}
+
+	@Test
 	void walksUpAThirtyDegreeSlopeSmoothly() {
 		List<SkyTri> t = new ArrayList<>();
 		flat(t, -5, -5, 0, 5, 0);

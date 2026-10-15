@@ -1,4 +1,4 @@
-param([ValidateSet('status','open_world','fixture','ship','stop','third_person','render_audit','overlay_audit','stage_probe','pick_probe','rendertype_probe','keys_probe','inject_quote','inject_f1','close_screen','key_watch')][string]$Operation='status')
+param([ValidateSet('status','open_world','render_test_world','loading_probe','abort_test_load','continue_world','render_test_ship','plot_transform_audit','atlas_request','atlas_poll','mesh_benchmark','shader_mesh','shader_preview','particle_seed','particle_audit','capture_frame','inventory','fixture','ship','stop','third_person','first_person','equip_gun','gun_refit','compat_audit','maid_walk','render_audit','overlay_audit','stage_probe','pick_probe','rendertype_probe','keys_probe','inject_quote','inject_f1','close_screen','key_watch')][string]$Operation='status')
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskJdk=Join-Path $env:APPDATA '.minecraft\runtime\java-runtime-epsilon\bin'

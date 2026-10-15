@@ -56,6 +56,26 @@ cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPL
 if errorlevel 1 exit /b 1
 inspector-test.exe endcraft.gameplay34.dll
 if errorlevel 1 exit /b 1
+rem gameplay35: Endfield 1.6.3 compatibility identity; retains the gameplay34 feature set
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay35\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay35.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay35.dll
+if errorlevel 1 exit /b 1
+rem gameplay36: display-space HUD colours and TaCZ/mob terrain compatibility
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay36\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay36.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay36.dll
+if errorlevel 1 exit /b 1
+rem gameplay37: preserve full HUD opacity with display-space texture sampling
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay37\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay37.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay37.dll
+if errorlevel 1 exit /b 1
+rem gameplay38: isolate native UI input while guest menus are open
+cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_GAMEPLAY /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.gameplay38\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.gameplay38.dll /link user32.lib /DYNAMICBASE /NXCOMPAT
+if errorlevel 1 exit /b 1
+inspector-test.exe endcraft.gameplay38.dll
+if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_INSPECTOR_ID=\"endcraft.inspect2\" /LD ..\..\native\inspector.cpp /Fe:endcraft.inspect2.dll /link /DYNAMICBASE /NXCOMPAT
 if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /EHsc /W4 /O2 /MT /I..\..\native\include /DENDCRAFT_VISUAL_PROBE /DENDCRAFT_TARGETS_PROBE /DENDCRAFT_ACTOR_MODULE_ID=\"endcraft.targets\" /LD ..\..\native\actor_reader.cpp /Fe:endcraft.targets.dll /link user32.lib /DYNAMICBASE /NXCOMPAT

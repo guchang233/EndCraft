@@ -5,16 +5,18 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 /** Captures Minecraft/NeoForge entity and block-entity renderers, including Create's fallback BERs. */
 final class EntityExporter {
+    private static final CaptureBuffers AVATAR = new CaptureBuffers(), SCENE = new CaptureBuffers();
     static void frame(Minecraft mc, float partial) {
+        if (dev.skycraft.link.SkyLink.renderBackedUp()) return;
         var dispatcher = mc.getEntityRenderDispatcher();
         dispatcher.prepare(mc.level, mc.gameRenderer.getMainCamera(), mc.crosshairPickEntity);
         mc.getBlockEntityRenderDispatcher().prepare(mc.level, mc.gameRenderer.getMainCamera(), mc.hitResult);
-        var avatar = new CaptureBuffers();
+        var avatar = AVATAR; avatar.reset();
         if (!mc.options.getCameraType().isFirstPerson() && !mc.player.isSpectator())
             dispatcher.render(mc.player, 0, 0, 0, mc.player.getYRot(), partial, new PoseStack(), avatar, dispatcher.getPackedLightCoords(mc.player, partial));
         avatar.send(Proto.REN_AVATAR, null);
         Vec3 origin = mc.player.position();
-        var scene = new CaptureBuffers(); int count = 0;
+        var scene = SCENE; scene.reset(); int count = 0;
         boolean hitboxes = dispatcher.shouldRenderHitBoxes();
         for (var entity : mc.level.entitiesForRendering()) {
             if (entity == mc.player || entity.distanceToSqr(origin) > 64 * 64) continue;
@@ -42,6 +44,7 @@ final class EntityExporter {
             }
         }
         SableExporter.capture(mc, partial, origin, scene);
+        ParticleExporter.capture(mc, partial, origin, scene);
         TerrainDebug.capture(origin, scene);
         scene.send(Proto.REN_SCENE, origin);
     }

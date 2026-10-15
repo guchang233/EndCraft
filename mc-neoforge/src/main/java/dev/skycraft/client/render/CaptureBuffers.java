@@ -18,22 +18,42 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 
 final class CaptureBuffers implements MultiBufferSource {
-    private record Key(int texture, boolean blended) { }
+    private record Key(int texture, boolean blended, com.mojang.blaze3d.vertex.VertexFormat.Mode mode) { }
     private final Map<Key, CapturedMesh> batches = new LinkedHashMap<>();
-    UnaryOperator<Vec3> transform = UnaryOperator.identity();
-    private final CapturedMesh discarded = new CapturedMesh();
+    UnaryOperator<Vec3> transform = CapturedMesh.IDENTITY;
+    private ByteBuffer transfer = ByteBuffer.allocateDirect(1024).order(ByteOrder.LITTLE_ENDIAN);
+    private final VertexConsumer discarded = new VertexConsumer() {
+        public VertexConsumer addVertex(float x, float y, float z) { return this; }
+        public VertexConsumer setColor(int r, int g, int b, int a) { return this; }
+        public VertexConsumer setUv(float u, float v) { return this; }
+        public VertexConsumer setUv1(int u, int v) { return this; }
+        public VertexConsumer setUv2(int u, int v) { return this; }
+        public VertexConsumer setNormal(float x, float y, float z) { return this; }
+    };
+    private final CapturedMesh discardedLines = new CapturedMesh();
+    void reset() {
+        batches.values().forEach(CapturedMesh::reset);
+        discardedLines.reset(); transform = CapturedMesh.IDENTITY;
+    }
     @Override public VertexConsumer getBuffer(RenderType type) {
-        // Name tags and other text: the host draws neither the tinted background nor the glyph
-        // colours, so a tag became an opaque white bar over the player.
-        if (name(type).startsWith("text")) return discarded;
+        // Untextured text backgrounds cannot be represented as an atlas mesh.
+        if (name(type).startsWith("text_background")) return discarded;
         if (type.mode() == com.mojang.blaze3d.vertex.VertexFormat.Mode.LINES) return lines(); // F3+B hitboxes
         ResourceLocation location = textureLocation(type);
-        if (location == null || type.mode() != com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS) return discarded;
+        if (location == null || type.mode() != com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS
+                && type.mode() != com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLES) {
+            unsupported(type); return discarded;
+        }
+        return textured(location, blended(type), type.mode());
+    }
+    VertexConsumer textured(ResourceLocation location, boolean blended) {
+        return textured(location, blended, com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS);
+    }
+    private VertexConsumer textured(ResourceLocation location, boolean blended, com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
         int id = TextureExporter.texture(location); if (id < 0) return discarded;
-        boolean blended = blended(type);
-        var key = new Key(id, blended);
+        var key = new Key(id, blended, mode);
         if (!batches.containsKey(key) && batches.size() >= 64) return discarded;
-        var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
+        var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh(mode));
         mesh.finish(); mesh.transform = transform; mesh.flags = 8 | (blended ? 2 : 1); return mesh;
     }
     /** Lines drawn as thin opaque prisms in the block-atlas batch (LineCapture). */
@@ -42,8 +62,8 @@ final class CaptureBuffers implements MultiBufferSource {
     }
     LineCapture lines(float halfWidth) {
         int id = TextureExporter.texture(TextureAtlas.LOCATION_BLOCKS);
-        var key = new Key(id, false);
-        if (id < 0 || !batches.containsKey(key) && batches.size() >= 64) return new LineCapture(discarded, halfWidth);
+        var key = new Key(id, false, com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS);
+        if (id < 0 || !batches.containsKey(key) && batches.size() >= 64) return new LineCapture(discardedLines, halfWidth);
         var mesh = batches.computeIfAbsent(key, k -> new CapturedMesh());
         mesh.finish(); mesh.transform = transform; mesh.flags = 8 | 1;
         return new LineCapture(mesh, halfWidth);
@@ -74,6 +94,12 @@ final class CaptureBuffers implements MultiBufferSource {
         });
     }
     private static final Map<RenderType, String> NAMES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> UNSUPPORTED = new java.util.HashSet<>();
+    private static void unsupported(RenderType type) {
+        String id = name(type) + "/" + type.mode();
+        if (UNSUPPORTED.size() < 32 && UNSUPPORTED.add(id))
+            dev.skycraft.SkyCraft.LOG.warn("EndCraft mesh exporter cannot capture render type {} (no texture or unsupported primitive)", id);
+    }
     private static Object compositeShard(RenderType type, String field) {
         try {
             Field state = type.getClass().getDeclaredField("state"); state.setAccessible(true); Object composite = state.get(type);
@@ -81,7 +107,11 @@ final class CaptureBuffers implements MultiBufferSource {
         } catch (ReflectiveOperationException | RuntimeException e) { return null; }
     }
     /** CompositeRenderType is package private; inspect its documented Mojang state, never GPU internals. */
+    private static final Map<RenderType, Optional<ResourceLocation>> TEXTURES = new java.util.concurrent.ConcurrentHashMap<>();
     private static ResourceLocation textureLocation(RenderType type) {
+        return TEXTURES.computeIfAbsent(type, t -> Optional.ofNullable(findTextureLocation(t))).orElse(null);
+    }
+    private static ResourceLocation findTextureLocation(RenderType type) {
         if (type == RenderType.solid() || type == RenderType.cutout() || type == RenderType.cutoutMipped() || type == RenderType.translucent()) return TextureAtlas.LOCATION_BLOCKS;
         try {
             Field state = type.getClass().getDeclaredField("state"); state.setAccessible(true); Object composite = state.get(type);
@@ -103,9 +133,12 @@ final class CaptureBuffers implements MultiBufferSource {
         var header = ByteBuffer.allocate((origin == null ? 0 : 24) + 8 + used.size() * 16).order(ByteOrder.LITTLE_ENDIAN);
         if (origin != null) header.putDouble(origin.x).putDouble(origin.y).putDouble(origin.z);
         header.putInt(used.size()).putInt(total);
-        var vertices = ByteBuffer.allocateDirect(total * Proto.REN_VERTEX_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        int required = total * Proto.REN_VERTEX_BYTES;
+        if (transfer.capacity() < required) transfer = ByteBuffer.allocateDirect(Math.max(required, transfer.capacity() * 2)).order(ByteOrder.LITTLE_ENDIAN);
+        var vertices = transfer; vertices.clear();
         int first = 0;
         for (var e : used) { int count = e.getValue().count(); header.putInt(e.getKey().texture).putInt(first).putInt(count).putInt(e.getKey().blended ? 1 : 0); vertices.put(e.getValue().bytes()); first += count; }
         SkyLink.tryWriteRender(type, header.flip(), vertices.flip());
+        batches.entrySet().removeIf(e -> e.getValue().count() == 0);
     }
 }

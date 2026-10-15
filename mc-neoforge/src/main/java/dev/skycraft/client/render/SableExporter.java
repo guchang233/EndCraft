@@ -29,22 +29,25 @@ final class SableExporter {
                 Object pose = ship.getClass().getMethod("renderPose", float.class).invoke(ship, partial);
                 Method transform = pose.getClass().getMethod("transformPosition", Vec3.class);
                 Object plot = ship.getClass().getMethod("getPlot").invoke(ship);
-                Vec3 center = (Vec3) transform.invoke(pose, Vec3.atCenterOf((BlockPos) plot.getClass().getMethod("getCenterBlock").invoke(plot)));
-                if (center.distanceToSqr(origin) > 96 * 96 || ++shipsDrawn > 8) continue;
+                Vec3 plotCenter = Vec3.atCenterOf((BlockPos) plot.getClass().getMethod("getCenterBlock").invoke(plot));
+                var mapping = new PlotTransform(plotCenter, origin, p -> {
+                    try { return (Vec3) transform.invoke(pose, p); }
+                    catch (ReflectiveOperationException e) { throw new IllegalStateException("Sable pose changed", e); }
+                });
+                if (mapping.centreRelative().lengthSqr() > 96 * 96 || ++shipsDrawn > 8) continue;
                 var holders = (Collection<?>) plot.getClass().getMethod("getLoadedChunks").invoke(plot);
                 for (Object holder : holders) {
                     LevelChunk chunk = (LevelChunk) holder.getClass().getMethod("getChunk").invoke(holder);
+                    int x0 = chunk.getPos().getMinBlockX(), z0 = chunk.getPos().getMinBlockZ();
+                    var pos = new BlockPos.MutableBlockPos();
                     for (int i = 0; i < chunk.getSections().length; i++) {
                         var section = chunk.getSection(i); if (section.hasOnlyAir()) continue;
                         int y0 = chunk.getSectionYFromSectionIndex(i) << 4;
                         for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
                             if (section.getBlockState(x, y, z).isAir()) continue;
                             if (++blocks > 8192) return;
-                            var pos = new BlockPos(chunk.getPos().getMinBlockX()+x, y0+y, chunk.getPos().getMinBlockZ()+z);
-                            output.transform = p -> {
-                                try { return ((Vec3) transform.invoke(pose, p.add(pos.getX(), pos.getY(), pos.getZ()))).subtract(origin); }
-                                catch (ReflectiveOperationException e) { throw new IllegalStateException("Sable pose changed", e); }
-                            };
+                            pos.set(x0+x, y0+y, z0+z);
+                            output.transform = mapping.forBlock(pos.getX(), pos.getY(), pos.getZ());
                             WorldExporter.captureBlock(mc, pos, new PoseStack(), output);
                             var be = chunk.getBlockEntity(pos);
                             if (be != null) EntityExporter.capturePlotBlockEntity(mc, be, partial, output);
@@ -54,6 +57,6 @@ final class SableExporter {
             }
         } catch (ReflectiveOperationException | LinkageError e) {
             if (!warned) { warned = true; dev.skycraft.SkyCraft.LOG.error("Sable mesh adapter unavailable for this build", e); }
-        } finally { output.transform = java.util.function.UnaryOperator.identity(); }
+        } finally { output.transform = CapturedMesh.IDENTITY; }
     }
 }

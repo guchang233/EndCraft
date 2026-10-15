@@ -13,6 +13,23 @@ STATE=ROOT/'.tools/install-manifest.json'
 SETTINGS=Path(os.environ['LOCALAPPDATA'])/'BetterEndfield'
 
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+def efml_managed_paths(game):
+    manifest=game/'EFML.xinput.install.json'
+    proxy=game/'xinput1_4.dll'
+    if not manifest.is_file() or not proxy.is_file(): return set()
+    try:
+        expected=json.loads(manifest.read_text(encoding='utf-8-sig')).get('Sha256','').lower()
+    except (OSError,ValueError): return set()
+    if not expected or sha(proxy).lower()!=expected: return set()
+    return {proxy.resolve(),(SETTINGS/'BetterEndfield.ini').resolve(),
+            (SETTINGS/'third-party/index.json').resolve()}
+
+def release_external_ownership(state,game):
+    managed=efml_managed_paths(game)
+    if managed:
+        state['files']=[record for record in state['files']
+                        if Path(record['path']).resolve() not in managed]
+    return managed
 def game_running():
     powershell=Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
     result=subprocess.run([str(powershell),'-NoProfile','-Command',
@@ -24,13 +41,12 @@ def local_payloads(game):
               f'[Host]\r\nmodules_root={ROOT / ".tools/framework/modules"}\r\n')
     sidecar=settings+f'[Paths]\r\nlocal_app_data={os.environ["LOCALAPPDATA"]}\r\n'
     paths=f'[Paths]\r\nlocal_app_data={os.environ["LOCALAPPDATA"]}\r\n'
-    payloads=[(game/'xinput1_4.dll',(ROOT/'build/framework/xinput1_4.dll').read_bytes()),
-            (game/'EndCraft-bootstrap.ini',sidecar.encode('utf-16')),
-            (SETTINGS/'BetterEndfield.ini',settings.encode('utf-16')),
+    payloads=[(game/'EndCraft-bootstrap.ini',sidecar.encode('utf-16')),
             (ROOT/'.tools/framework/runtime/BetterEndfield.Host.dll',(ROOT/'build/framework/BetterEndfield.Host.dll').read_bytes()),
             (ROOT/'.tools/framework/endcraft-paths.ini',paths.encode('utf-16'))]
-    if (SETTINGS/'third-party/index.json').exists():
-        payloads.append((ROOT/'.tools/framework/third-party/index.json',(SETTINGS/'third-party/index.json').read_bytes()))
+    if not efml_managed_paths(game):
+        payloads.insert(0,(game/'xinput1_4.dll',(ROOT/'build/framework/xinput1_4.dll').read_bytes()))
+        payloads.append((SETTINGS/'BetterEndfield.ini',settings.encode('utf-16')))
     return payloads
 
 def owned_paths(game):
@@ -42,10 +58,12 @@ def owned_paths(game):
 
 def validate_owned(state):
     game=Path(state['game_dir']).resolve()
+    managed=efml_managed_paths(game)
     allowed={path.resolve() for path in owned_paths(game)}
     for record in state['files']:
         path=Path(record['path']).resolve()
         if path not in allowed: raise RuntimeError('Invalid ownership record; no files changed.')
+        if path in managed: continue
         if path.exists() and sha(path)!=record['sha256']: raise RuntimeError(f'Changed file preserved: {path}')
     return game
 
@@ -123,6 +141,7 @@ def update():
     if game_running(): raise RuntimeError('Close Endfield normally before replacing its loaded DLL.')
     state=json.loads(STATE.read_text(encoding='utf-8'))
     game=validate_owned(state)
+    release_external_ownership(state,game)
     payloads=local_payloads(game)
     owned={Path(item['path']).resolve() for item in state['files']}
     legacy_runtime=(ROOT/'.tools/framework/runtime/BetterEndfield.Host.dll').resolve()
@@ -180,8 +199,11 @@ def install(game):
 def uninstall():
     if game_running(): raise RuntimeError('Close Endfield before uninstalling the bootstrap DLL.')
     state=json.loads(STATE.read_text(encoding='utf-8'))
-    validate_owned(state)
-    for record in state['files']: Path(record['path']).unlink(missing_ok=True)
+    game=validate_owned(state)
+    managed=efml_managed_paths(game)
+    for record in state['files']:
+        path=Path(record['path'])
+        if path.resolve() not in managed: path.unlink(missing_ok=True)
     STATE.unlink()
     print('Owned bootstrap/configuration removed; diagnostic logs retained.')
 

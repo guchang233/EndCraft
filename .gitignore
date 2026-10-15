@@ -12,6 +12,8 @@ mc-neoforge/build/
 mc-neoforge/run/
 mc-neoforge/libs/
 mc-neoforge/libs-disabled/
+mc-neoforge/libs-shaders/
+mc-neoforge/libs-shaders-dev/
 reports/
 mc/logs/
 *.log
@@ -24,3 +26,6 @@ mc/logs/
 .env.*
 __pycache__/
 *.pyc
+.workbuddy/
+mc-neoforge/SHADER.zip
+mc-neoforge/launcher_profiles.json

@@ -19,8 +19,17 @@ public abstract class LevelRendererMixin {
 		cancellable = true
 	)
 	private void skycraft$skipLevel(CallbackInfo ci) {
-		if (SkyClient.linked()) {
-			var target = net.minecraft.client.Minecraft.getInstance().getMainRenderTarget();
+		if (dev.skycraft.client.RenderBackend.meshOverlay()) {
+			var mc = net.minecraft.client.Minecraft.getInstance();
+			// Cancelling the world draw must not cancel its light queue or leave the
+			// inventory's diffuse lights installed for the next first-person frame.
+			mc.level.pollLightUpdates();
+			mc.level.getChunkSource().getLightEngine().runLightUpdates();
+			if (mc.level.effects().constantAmbientLight())
+				com.mojang.blaze3d.platform.Lighting.setupNetherLevel();
+			else com.mojang.blaze3d.platform.Lighting.setupLevel();
+			com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1, 1, 1, 1);
+			var target = mc.getMainRenderTarget();
 			target.setClearColor(0, 0, 0, 0);
 			target.clear(net.minecraft.client.Minecraft.ON_OSX);
 			target.bindWrite(true);

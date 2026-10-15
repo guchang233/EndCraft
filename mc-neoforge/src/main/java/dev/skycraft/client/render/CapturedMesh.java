@@ -1,6 +1,7 @@
 package dev.skycraft.client.render;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.skycraft.link.Proto;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -10,15 +11,31 @@ import net.minecraft.world.phys.Vec3;
 
 /** Capture old-style VertexConsumer quads into the unchanged protocol-12 vertex layout. */
 final class CapturedMesh implements VertexConsumer {
-    private ByteBuffer data = ByteBuffer.allocateDirect(65536).order(ByteOrder.LITTLE_ENDIAN);
+    private ByteBuffer data = ByteBuffer.allocateDirect(1024).order(ByteOrder.LITTLE_ENDIAN);
+    static final UnaryOperator<Vec3> IDENTITY = UnaryOperator.identity();
+    private static final int[] TRIANGLE_ORDER = {0, 1, 2};
+    private static final int[] QUAD_ORDER = {0, 1, 2, 0, 2, 3};
     private final float[][] quad = new float[4][8];
     private int pending, vertices;
+    private final boolean triangles;
+    CapturedMesh() { this(VertexFormat.Mode.QUADS); }
+    CapturedMesh(VertexFormat.Mode mode) {
+        if (mode != VertexFormat.Mode.QUADS && mode != VertexFormat.Mode.TRIANGLES)
+            throw new IllegalArgumentException("Unsupported primitive: " + mode);
+        triangles = mode == VertexFormat.Mode.TRIANGLES;
+    }
     private boolean open;
     int flags = 1 | 8;
-    UnaryOperator<Vec3> transform = UnaryOperator.identity();
+    UnaryOperator<Vec3> transform = IDENTITY;
     private float x, y, z, u, v, nx, ny, nz;
     private int color = -1, light = 0x00f000f0;
     int count() { finish(); return vertices; }
+    void reset() {
+        data.clear(); pending = vertices = 0; open = false;
+        transform = IDENTITY; flags = 1 | 8;
+        x = y = z = u = v = nx = ny = nz = 0;
+        color = -1; light = 0x00f000f0;
+    }
     ByteBuffer bytes() { finish(); return data.duplicate().flip().order(ByteOrder.LITTLE_ENDIAN); }
     void append(CapturedMesh other) {
         finish(); ByteBuffer source = other.bytes(); ensure(source.remaining()); data.put(source); vertices += other.count();
@@ -30,22 +47,26 @@ final class CapturedMesh implements VertexConsumer {
     }
     private void commit() {
         if (!open) return;
-        Vec3 position = transform.apply(new Vec3(x, y, z));
         float[] q = quad[pending++];
-        q[0] = (float) position.x; q[1] = (float) position.y; q[2] = (float) position.z;
+        if (transform == IDENTITY) { q[0] = x; q[1] = y; q[2] = z; }
+        else {
+            Vec3 position = transform.apply(new Vec3(x, y, z));
+            q[0] = (float) position.x; q[1] = (float) position.y; q[2] = (float) position.z;
+        }
         q[3] = u; q[4] = v; q[5] = Float.intBitsToFloat(color); q[6] = Float.intBitsToFloat(light);
         int face = nx == 0 && ny == 0 && nz == 0 ? 0 : Direction.getNearest(nx, ny, nz).ordinal() + 1;
         q[7] = Float.intBitsToFloat(flags | face << 4);
         open = false;
-        if (pending == 4) {
-            ensure(6 * Proto.REN_VERTEX_BYTES);
-            for (int index : new int[]{0, 1, 2, 0, 2, 3}) {
+        if (pending == (triangles ? 3 : 4)) {
+            int count = triangles ? 3 : 6;
+            ensure(count * Proto.REN_VERTEX_BYTES);
+            for (int index : triangles ? TRIANGLE_ORDER : QUAD_ORDER) {
                 float[] a = quad[index]; int argb = Float.floatToRawIntBits(a[5]), packed = Float.floatToRawIntBits(a[6]);
                 data.putFloat(a[0]).putFloat(a[1]).putFloat(a[2]).putFloat(a[3]).putFloat(a[4]);
                 data.put((byte) (argb >>> 16)).put((byte) (argb >>> 8)).put((byte) argb).put((byte) (argb >>> 24));
                 data.putInt((packed >>> 4 & 15) | (packed >>> 20 & 15) << 8).putInt(Float.floatToRawIntBits(a[7]));
             }
-            vertices += 6; pending = 0;
+            vertices += count; pending = 0;
         }
     }
     void finish() { commit(); }

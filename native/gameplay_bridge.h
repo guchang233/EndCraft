@@ -3,6 +3,8 @@
 #include "coordinate_map.h"
 #include "player_input_mask.h"
 #include "input_mode.h"
+#include "menu_input_gate.h"
+#include "model_visibility_shortcut.h"
 #include "camera_math.h"
 #include "native_combat.h"
 #include "host_authority.h"
@@ -53,11 +55,16 @@ class GameplayBridge {
     unity::V3 safeHost{};
     bool keys[256]{};bool buttons[4]{};
     InputMode inputMode;
+    ModelVisibilityShortcut modelVisibility;
     std::atomic<bool> exclusiveGate=false;
     std::atomic<int> queuedInputMode{-1};
     bool modeNotification=true;
     std::atomic<std::uint64_t> suppressedNativeKeys=0;
     std::atomic<std::uint64_t> suppressedNativeBindings=0;
+    MenuInputGate menuInputGate;
+    std::atomic<std::uint64_t> suppressedNativeUi=0;
+    std::atomic<bool> nativeUiBlocked=false;
+    bool nativeUiHook=false;
     bool nativeKeyHooks=false;
     std::vector<unsigned char> payload;
     std::string error;
@@ -270,6 +277,23 @@ class GameplayBridge {
         memory.collision(proto::kColRegion,bytes.data(),bytes.size());
     }
 public:
+    bool suppressNativeUi() {
+        // EventSystem runs before or after the camera tick depending on the scene.
+        // Read the current guest flags here so the opening frame cannot click through.
+        std::lock_guard lock(mutex);
+        DWORD foreground=0;GetWindowThreadProcessId(GetForegroundWindow(),&foreground);
+        proto::McState mc{};
+        const bool available=requested.load()&&active&&!hostMenu&&memory.mc(mc)&&
+            (mc.flags&proto::kMcInWorld)&&!(mc.flags&proto::kMcDead)&&mc.teleportAck==teleport;
+        const bool mouseDown=((GetAsyncKeyState(VK_LBUTTON)|GetAsyncKeyState(VK_RBUTTON)|
+            GetAsyncKeyState(VK_MBUTTON)|GetAsyncKeyState(VK_XBUTTON1)|GetAsyncKeyState(VK_XBUTTON2))&0x8000)!=0;
+        const bool blocked=menuInputGate.suppress(available,(mc.flags&proto::kMcScreenOpen)!=0,
+            foreground==GetCurrentProcessId(),mouseDown);
+        nativeUiBlocked.store(blocked);
+        if(blocked) ++suppressedNativeUi;
+        return blocked;
+    }
+    void uiHookReady(bool value) {nativeUiHook=value;}
     bool suppressNativeKey() noexcept {
         if(exclusiveGate.load(std::memory_order_acquire)) {++suppressedNativeKeys;return true;}
         return false;
@@ -299,6 +323,7 @@ public:
     void hostTeleportFinish() {hostTeleportSettleUntil.store(GetTickCount64()+750);hostTeleporting.store(false);recovery.store(true);}
     void enable(bool value) {if(value&&!requested.exchange(true)) rejoin.store(true);else if(!value) {requested.store(false);exclusiveGate.store(false);}}
     void capture() {std::lock_guard lock(mutex);captured=false;captureError.clear();}
+    void hudTint(float value) {std::lock_guard lock(mutex);renderer.hudTint=value;}
     void shader(const std::string& name) {std::lock_guard lock(mutex);queuedShader=name;}
     void rendererProbe() {std::lock_guard lock(mutex);probeRequested=true;}
     void nativeRendering(bool value) {std::lock_guard lock(mutex);renderer.nativeRendering=value;}
@@ -585,10 +610,14 @@ public:
                 memory.input({proto::kInReleaseAll,0,0,0,0});
             }
             lastMc=mc;guestReady=ready;
-            exclusiveGate.store(ready&&focus&&inputMode.exclusive(),std::memory_order_release);
-            if(ready&&inputMode.exclusive()) inputMask.apply(character);else inputMask.release();
-            if(ready&&!characterHidden&&!hideFailed) setCharacterVisible(false);
-            if(!ready&&characterHidden) setCharacterVisible(true);
+            const bool ownsInput=inputMode.exclusive()||(mc.flags&proto::kMcScreenOpen);
+            exclusiveGate.store(ready&&focus&&ownsInput,std::memory_order_release);
+            if(ready&&ownsInput) inputMask.apply(character);else inputMask.release();
+            if(modelVisibility.poll(focus,(GetAsyncKeyState(VK_F6)&0x8000)!=0,ready&&!(mc.flags&proto::kMcScreenOpen))) {
+                hideFailed=false;hideAttempts=0;
+            }
+            if(ready&&!modelVisibility.visible()&&!characterHidden&&!hideFailed) setCharacterVisible(false);
+            if((!ready||modelVisibility.visible())&&characterHidden) setCharacterVisible(true);
             cursor(ready&&(mc.flags&proto::kMcScreenOpen)&&focus);
             unity::V3 mcPosition=ready?unity::V3{float(mc.x),float(mc.y),float(mc.z)}:teleportPosition;
             guard.at=mcPosition;
@@ -665,14 +694,19 @@ public:
         std::lock_guard lock(mutex);
         return {{"requested",requested.load()},{"active",active},{"initialized",initialized},{"error",error},{"frames",frames},{"host_moves",moves},
             {"hud_frames",renderer.hudFrames},{"section_meshes",renderer.meshMessages},{"avatar_frames",renderer.avatarFrames},{"scene_frames",renderer.sceneFrames},{"scene_vertices",renderer.sceneVertices},{"shader",renderer.shaderName},
+            {"hud_tint",renderer.hudTint},
             {"host_teleports",hostTeleports},{"host_teleporting",hostTeleporting.load()},{"recoveries",recoveryCount},{"resyncs",resyncs},{"bad_poses",badPoses},{"dropped_render_messages",droppedMessages},{"character_hidden",characterHidden},
             {"render_error",renderError},{"character_hide_error",hideError},{"guest_ready",guestReady},
             {"hidden_renderer_count",hiddenRendererCount},
+            {"native_character_visible_requested",modelVisibility.visible()},
             {"visual_model_hidden",nativeRenderHelper!=nullptr},
             {"native_animation_model_kept_active",visualModel!=nullptr&&visualModelWasActive},
             {"host_input_mask",inputMask.snapshot()},
             {"mc_exclusive_hotkeys",inputMode.exclusive()},{"native_hotkeys_suppressed",exclusiveGate.load()},
             {"native_keyboard_hooks",nativeKeyHooks},{"suppressed_native_key_queries",suppressedNativeKeys.load()},
+            {"native_ui_hook",nativeUiHook},{"native_ui_blocked",nativeUiBlocked.load()},
+            {"suppressed_native_ui_updates",suppressedNativeUi.load()},
+            {"guest_screen_open",bool(lastMc.flags&proto::kMcScreenOpen)},
             {"transparency",renderer.transparencyState()},
             {"suppressed_native_binding_updates",suppressedNativeBindings.load()},
             {"scroll_error",scrollError},

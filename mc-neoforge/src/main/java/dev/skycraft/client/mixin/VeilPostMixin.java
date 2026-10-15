@@ -15,6 +15,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class VeilPostMixin {
     @Inject(method = "renderPost", at = @At("HEAD"), cancellable = true, remap = false)
     private static void endcraft$keepOverlayTransparent(CallbackInfo ci) {
-        if (SkyClient.linked()) ci.cancel();
+        if (dev.skycraft.client.RenderBackend.meshOverlay()) ci.cancel();
     }
 }

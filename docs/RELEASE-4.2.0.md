@@ -1,52 +1,52 @@
-# EndCraft v4.2.0
+# EndCraft 4.2.0
 
-4.2.0 为 NeoForge 客户端引入四个内容模组：**永恒枪械工坊（TaCZ）**、**Yes Steve Model（YSM）**、**车万女仆（Touhou Little Maid）** 与 Maid Addition，并完成静态兼容审计。玩法桥接功能与 4.1.2 相同。
+适配终末地 1.6.3，更新宿主模块至 `endcraft.gameplay38`。本版重点修正 NeoForge 的界面颜色、TaCZ 配件预览和菜单点击穿透，并减少桥接网格、纹理与队列处理开销。
 
-## 内容模组
+## 下载与升级
 
-| 模组 | 版本 | 来源 |
-|---|---|---|
-| TaCZ（1.21.1 NeoForge 移植） | 1.1.8-hotfix-r7 | Modrinth `OypNE65K`，哈希核对一致 |
-| Yes Steve Model | 2.6.3-neoforge+mc1.21.1 | Modrinth `86xjpqqS`，哈希核对一致 |
-| Touhou Little Maid | 1.5.3-neoforge+mc1.21.1 | Modrinth `R0bDWFAW`，哈希核对一致 |
-| Maid Addition | 1.0.1-beta | 无发布主页，仅本地 SHA-512 锁定 |
-| GeckoLib（新增前置） | 4.9.3 | Modrinth `8BmcQJ2H`，YSM 外置依赖 |
+NeoForge 用户下载三个文件：
 
-全部九件模组（含原有四件）记录在 `mc-neoforge/modpack.lock.json`，`python tools/fetch-neoforge-mods.py` 逐件校验 SHA-512。
+- `EndCraft-gameplay38-4.2.0-win-x64.zip`：终末地玩法模块。
+- `EndCraft-probe-4.2.0-win-x64.zip`：必需的共享内存模块。
+- `endcraft-neoforge-guest-4.2.0.jar`：放入 MC 1.21.1 NeoForge 实例的 `mods` 目录。
 
-## 兼容处理
+推荐使用 EFML 的 xinput 代理，并从官方鹰角启动器进入终末地。导入并启用两个 ZIP，停用旧版玩法模块；关闭 MC 后替换 JAR，再重新启动。不要同时运行多个玩法模块或 MC 桥接客户端。操作见 [README](../README.md)。
 
-| 问题 | 处理 |
-|---|---|
-| YSM 缺少 GeckoLib 前置（jar 内无内嵌、无依赖声明），运行时会类加载失败 | 锁定 GeckoLib 4.9.3 作为外置前置；测试守卫验证 YSM 仍未内嵌 GeckoLib、GeckoLib 仍在锁文件 |
-| 本项目 Mixin 与四个模组在 7 个类上共享注入目标 | 逐一比对发布字节码注入点，确认无方法级交集；允许清单写入 `MixinTargetTest`，新的类级重叠会直接使测试失败 |
-| TaCZ 官方标注与 Veil 旧版不兼容 | Sable 内嵌 Veil 4.3.2（≥ 修复版 3.1.2），且 `VeilPostMixin` 目标有效性已有字节码审计覆盖 |
-| 女仆、扫帚、枪械投射物占满旧实体导出预算（96） | 实体导出上限提高到 192；方块实体预算不变 |
+同时提供 Fabric 26.3 客户端 `endcraft-guest-4.2.0.jar`、包含固定上游源码的源代码归档及 `SHA256SUMS.txt`。下列本轮界面修复与光影预览针对 NeoForge；Fabric 与 NeoForge 的存档不能混用。
 
-新增静态测试（不加载游戏）：四个模组的 Mixin 配置每个声明类可解析、锁文件与 `libs/` 目录双向一致（哈希逐件核对）、YSM GeckoLib 前置守卫。
+## 修正
 
-## 已隔离：Yes Steve Model
+- 修正宿主再次解码 MC 最终显示颜色导致的 HUD、背包和手持物品偏暗。HUD 保持原透明度，不透明界面不会变成半透明。
+- TaCZ 的 Z 配件界面临时切为第一人称，关闭后恢复视角；去掉盖在枪械上的暗色菜单背景，预览使用全亮光照。普通手持物品保留原光照。
+- 打开 MC 菜单时拦截终末地 UI 的事件派发，点击右上角配件按钮不会同时打开终末地菜单。关闭菜单后等待鼠标松开并经过释放帧，再恢复原生 UI。
+- 跳过 MC 世界绘制时仍更新光照队列并重置漫反射灯光、shader 颜色，减少不同界面之间的渲染状态残留。
+- 补充标准图集粒子、屏障标记、三角形动态网格和字体字形的导出。屏障本体仍遵循 MC 原版不可见规则。
+- Mob 接入原生三角面碰撞，短程女仆行走验证通过；地形数据重建、离开采样区等情况下的长期支撑仍待完善，见下方已知限制。
 
-YSM 2.6.3 在本机加载原生库失败（`err: 54`），NeoForge 因此停在 `LoadingErrorScreen`，**客户端无法进入世界**。为不影响其余模组，4.2.0 将其移到 `mc-neoforge/libs-disabled/`，锁文件里标记为 `disabled`（保留来源与哈希）。恢复方法：删掉锁文件里 ysm 条目的 `disabled` 与 `disabled_reason` 两行，把 jar 移回 `libs/`。
+## 性能与调试
 
-GeckoLib 4.9.3 保留在锁文件中，恢复 YSM 后即可直接使用。
+- 复用区块、实体和透明裁剪的暂存缓冲区，减少重复直接内存和临时对象分配。
+- 缓存最多 64MiB 的区块快照用于恢复重发，按脏标记失效；每帧最多建模两个区块，完成一个区块后检查 3ms 预算。
+- 动画图集使用 PBO/fence 异步读回；渲染队列拥塞时暂停新捕获并重试必要消息。
+- 航空学坐标变换改为每艘物理体采样一次仿射变换，顶点使用矩阵计算；尚未缓存整艘物理体的几何。
+- F6 切换终末地原生人物模型显示，默认隐藏；没有打开 MC 界面且桥接就绪时生效。
+- 增加可选 Iris/Sodium 光影预览流程，验证完整 MC 渲染及帧读回。预览覆盖原生场景，尚未实现终末地与 MC 光影的深度融合。
 
-## 实机结果（桥接模式）
+局部离线基准不代表双游戏 FPS；本版没有同场景优化前后的联动性能百分比。详细范围见 [性能说明](PERFORMANCE.md) 与 [渲染说明](RENDERING.md)。
 
-隔离 YSM 后重启，桥接完整建立：进入镜像世界、读到宿主世界 536116223、重发方块网格、玩家传送并切到第三人称。TaCZ、车万女仆、Maid Addition 三者均加载并运行。日志里只有 Veil 一个计算着色器编译错误（随后回退 legacy），未阻断启动。
+## 内容模组与构建
 
-## 仍需逐项验收
+开发组合包含 TaCZ 1.1.8-hotfix-r7、Touhou Little Maid 1.5.3、GeckoLib 4.9.3，以及原有 Create、Aeronautics、Sable 和 Flight Control。第三方 JAR、枪包及用户光影包不附在发行附件中；来源与 SHA-512 见 `mc-neoforge/modpack.lock.json`。
 
-- 枪械射击/换弹的渲染捕获，以及 TaCZ 特效是否绕过捕获；
-- 女仆实体（含 GeckoLib 动画）经实体导出通道的显示；
-- Maid Addition 区块加载对导出预算与帧率的影响；
-- TLM 扫帚物理检查期间与终末地地形的穿模表现；
-- YSM 恢复前需解决 `err: 54`（先排查 NVIDIA Overlay 与 Oray 向日葵驱动）。
+YSM 2.6.3 因本机原生库加载失败（`err: 54`）保持停用，下载到 `libs-disabled/` 仅用于字节码审计。Maid Addition 没有已锁定的发布下载地址，作为可选本地文件；缺少它不再阻断干净环境构建，提供文件时仍严格校验哈希。EFML 工具优先读取实际运行配置，通过 CLI 注册和切换模块，旧加载器卸载不会删除已归 EFML 管理的代理。
 
-## 使用提示
+## 验证与限制
 
-- 枪包（`.zip`）放入 `mc-neoforge/run/tacz/`；游戏内 `/tacz reload` 重载。
-- YSM 模型包放入 `mc-neoforge/run/ysm/`。
-- 以上目录以 MC 游戏目录（`mc-neoforge/run`）为根；独立与桥接模式共用。
+- NeoForge 本地构建和 58 项检查通过；安装、EFML 与依赖工具 15 项 Python 检查通过。
+- 原生输入、焦点切换、菜单关闭释放、透明裁剪和 ABI 生命周期检查通过。
+- 终末地 1.6.3 + NeoForge 实机中，HUD 抽查的 78,666 个不透明灰阶像素与 MC 源图完全一致。
+- 新版配件界面已重新加载并截帧核对，用户确认“亮度正常，点击不再穿透”。
+- 女仆曾完成 120 次短程采样、移动 7.2 格且未穿地；后续会话仍记录到女仆掉出世界，因此不能保证长期行走和地形重建期间的支撑。
+- 尚未完成两台电脑各运行终末地的联机、复杂航空学起降、全部枪械特效及 YSM 的实机验收。
 
-安装与启动见 [README](../README.md)；桥接细节见 [NEOFORGE](NEOFORGE.md)。
+本版仍是实验性项目。终末地适配详情见 [1.6.3 记录](ENDFIELD-1.6.3.md)。

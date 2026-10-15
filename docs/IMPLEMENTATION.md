@@ -1,6 +1,6 @@
 # 实现状态索引
 
-当前发行版本为 **4.1.2**（Fabric 26.3 与 NeoForge 1.21.1 两个客户端），宿主模块 `endcraft.gameplay34`，协议版本 12。
+当前版本为 **4.2.0**（Fabric 26.3 与 NeoForge 1.21.1 两个客户端），终末地 1.6.3 适配使用宿主模块 `endcraft.gameplay38`，协议版本 12。
 
 本文件保留原实现记录的入口；当前原理与能力说明已整理到 [实现原理](ARCHITECTURE.md)，安装和操作分别见 [安装教程](INSTALL.md) 与 [操作教程](USER-GUIDE.md)。
 

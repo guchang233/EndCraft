@@ -25,15 +25,19 @@ public final class WorldExporter {
     private static final LongOpenHashSet EXPORTED = new LongOpenHashSet();
     private static int generation = -1, scanTick, sentWorld, refreshTick;
     private static boolean hostWasLoading;
+    private static boolean lastPreview;
     // The host drops render messages while its renderer is not ready and on managed exceptions;
     // re-send exported sections round-robin so a lost one comes back on its own.
     private static final it.unimi.dsi.fastutil.longs.LongArrayList REFRESH = new it.unimi.dsi.fastutil.longs.LongArrayList();
     private static final int REFRESH_EVERY_FRAMES = 4;
     private static net.minecraft.client.multiplayer.ClientLevel currentLevel;
     private static final RandomSource RANDOM = RandomSource.create(0);
+    private static final CapturedMesh SECTION_MESH = new CapturedMesh();
+    private static final CapturedMesh PART_MESH = new CapturedMesh();
+    private static final SectionReplayCache REPLAY = new SectionReplayCache(64L * 1024 * 1024);
     public static void invalidateResources() { generation = -1; }
-    public static void markDirty(int x, int y, int z) { DIRTY.add(SectionPos.asLong(x, y, z)); }
-    public static void markDirtyNow(int x, int y, int z) { DIRTY.addAndMoveToFirst(SectionPos.asLong(x, y, z)); }
+    public static void markDirty(int x, int y, int z) { long key = SectionPos.asLong(x, y, z); REPLAY.remove(key); DIRTY.add(key); }
+    public static void markDirtyNow(int x, int y, int z) { long key = SectionPos.asLong(x, y, z); REPLAY.remove(key); DIRTY.addAndMoveToFirst(key); }
     public static void frame(Minecraft mc, float partial) {
         if (mc.player == null || mc.level == null) return;
         var sky = dev.skycraft.client.SkyClient.sky();
@@ -44,16 +48,23 @@ public final class WorldExporter {
             hostWasLoading = false;
             requeueExported();
         }
-        if (generation != SkyLink.generation() || currentLevel != mc.level || sentWorld != sky.worldId) {
+        boolean preview = dev.skycraft.client.RenderBackend.preview();
+        if (generation != SkyLink.generation() || currentLevel != mc.level || sentWorld != sky.worldId || lastPreview != preview) {
             // A new host world (scene reload) or a new link: drop whatever the host still holds, then
             // send the atlas and every loaded section again, as the Fabric exporter does.
-            if (!SkyLink.writeRender(Proto.REN_CLEAR_ALL, ByteBuffer.allocate(0), null)) return;
-            generation = SkyLink.generation(); currentLevel = mc.level; sentWorld = sky.worldId;
-            DIRTY.clear(); SENT.clear(); EXPORTED.clear(); REFRESH.clear(); TextureExporter.reset();
+            if (!SkyLink.tryWriteRender(Proto.REN_CLEAR_ALL, ByteBuffer.allocate(0), null)) return;
+            generation = SkyLink.generation(); currentLevel = mc.level; sentWorld = sky.worldId; lastPreview = preview;
+            DIRTY.clear(); SENT.clear(); EXPORTED.clear(); REFRESH.clear(); REPLAY.clear(); TextureExporter.reset();
             dev.skycraft.SkyCraft.LOG.info("SkyCraft: host world {} — resending all Minecraft block meshes", sentWorld);
         }
-        if (!TextureExporter.atlas(mc)) return;
-        TextureExporter.animate();
+        if (SkyLink.renderBackedUp()) {
+            SkyLink.writeWorldEntities(java.util.List.of(), selection(mc));
+            return;
+        }
+        if (!preview) {
+            if (!TextureExporter.atlas(mc)) return;
+            TextureExporter.animate();
+        }
         if ((scanTick++ % 20) == 0) {
             int cx = mc.player.chunkPosition().x, cz = mc.player.chunkPosition().z;
             for (int z = -4; z <= 4; z++) for (int x = -4; x <= 4; x++) {
@@ -68,13 +79,22 @@ public final class WorldExporter {
         }
         if (DIRTY.isEmpty() && ++refreshTick % REFRESH_EVERY_FRAMES == 0) {
             if (REFRESH.isEmpty()) REFRESH.addAll(SENT);
-            if (!REFRESH.isEmpty()) DIRTY.add(REFRESH.removeLong(REFRESH.size() - 1));
+            if (!REFRESH.isEmpty()) {
+                long key = REFRESH.removeLong(REFRESH.size() - 1);
+                var cached = REPLAY.get(key);
+                if (cached == null) DIRTY.add(key);
+                else if (!SkyLink.tryWriteRender(Proto.REN_SECTION, cached.header().duplicate(), cached.vertices().duplicate())
+                    || !SkyLink.tryWriteRender(Proto.REN_SOLIDS, cached.solidHeader().duplicate(), cached.solids().duplicate())) REFRESH.add(key);
+            }
         }
+        long sectionDeadline = System.nanoTime() + 3_000_000;
         for (int count = 0; count < 2 && !DIRTY.isEmpty(); count++) {
             long section = DIRTY.removeFirstLong();
             if (!exportSection(mc, section)) { DIRTY.add(section); break; }
+            if (System.nanoTime() >= sectionDeadline || SkyLink.renderBackedUp()) break;
         }
-        EntityExporter.frame(mc, partial);
+        // Raster preview already renders entities/particles through vanilla and shader-pack passes.
+        if (!dev.skycraft.client.RenderBackend.preview()) EntityExporter.frame(mc, partial);
         SkyLink.writeWorldEntities(java.util.List.of(), selection(mc));
     }
     private static void requeueExported() {
@@ -88,18 +108,20 @@ public final class WorldExporter {
         int index = mc.level.getSectionIndexFromSectionY(sy);
         if (index < 0 || index >= chunk.getSections().length) return true;
         var section = chunk.getSection(index);
-        var output = new CapturedMesh();
+        var output = SECTION_MESH; output.reset();
         long[] solids = new long[64]; int solidCount = 0;
         var pos = new BlockPos.MutableBlockPos();
         var origin = new BlockPos(sx << 4, sy << 4, sz << 4);
         var dispatcher = mc.getBlockRenderer();
         var pose = new PoseStack();
+        boolean visual = !dev.skycraft.client.RenderBackend.preview();
         for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
             var state = section.getBlockState(x, y, z); if (state.isAir()) continue;
             pos.set(origin.getX() + x, origin.getY() + y, origin.getZ() + z);
             if (!state.getCollisionShape(mc.level, pos).isEmpty()) { int bit = x + 16 * z + 256 * y; solids[bit >> 6] |= 1L << (bit & 63); solidCount++; }
+            if (!visual) continue;
             if (!state.getFluidState().isEmpty()) {
-                var fluid = new CapturedMesh();
+                var fluid = PART_MESH; fluid.reset();
                 fluid.flags = 128 | 8 | (ItemBlockRenderTypes.getRenderLayer(state.getFluidState()) == RenderType.translucent() ? 2 : 1);
                 dispatcher.renderLiquid(pos, mc.level, fluid, state, state.getFluidState());
                 output.append(fluid);
@@ -111,7 +133,7 @@ public final class WorldExporter {
             var resolved = model.getModelData(mc.level, pos, state, data);
             RANDOM.setSeed(state.getSeed(pos));
             for (RenderType layer : model.getRenderTypes(state, RANDOM, resolved)) {
-                var part = new CapturedMesh(); part.flags = 8 | (layer == RenderType.translucent() ? 2 : 1);
+                var part = PART_MESH; part.reset(); part.flags = 8 | (layer == RenderType.translucent() ? 2 : 1);
                 pose.pushPose(); pose.translate(x, y, z);
                 dispatcher.getModelRenderer().tesselateBlock(mc.level, model, state, pos, pose, part, true, RANDOM, state.getSeed(pos), 0, resolved, layer);
                 pose.popPose(); output.append(part);
@@ -119,11 +141,15 @@ public final class WorldExporter {
         }
         var header = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(output.count()).flip();
         if (!SkyLink.tryWriteRender(Proto.REN_SECTION, header, output.bytes())) return false;
-        if (output.count() == 0) SENT.remove(key); else SENT.add(key);
+        if (output.count() == 0 && solidCount == 0) SENT.remove(key); else SENT.add(key);
         EXPORTED.add(key);
         var bits = ByteBuffer.allocate(512).order(ByteOrder.LITTLE_ENDIAN); for (long word : solids) bits.putLong(word);
         var solidHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(solidCount).flip();
-        return SkyLink.tryWriteRender(Proto.REN_SOLIDS, solidHeader, bits.flip());
+        bits.flip();
+        if (!SkyLink.tryWriteRender(Proto.REN_SOLIDS, solidHeader, bits)) return false;
+        if (output.count() > 0 || solidCount > 0) REPLAY.put(key, header, output.bytes(), solidHeader, bits);
+        else REPLAY.remove(key);
+        return true;
     }
     static void captureBlock(Minecraft mc, BlockPos pos, PoseStack pose, CaptureBuffers target) {
         var state = mc.level.getBlockState(pos);

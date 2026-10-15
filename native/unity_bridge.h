@@ -103,10 +103,12 @@ public:
         }
         return result;
     }
-    void* texture(unsigned width,unsigned height,const void* bytes) {
+    void* texture(unsigned width,unsigned height,const void* bytes,bool linear=false) {
         if(!width||!height||width>8192||height>8192) throw std::runtime_error("texture dimensions invalid");
         auto* result=object("Texture2D");int w=int(width),h=int(height),format=4;bool mip=false;
-        call(method("Texture2D",".ctor","System.Int32|System.Int32|UnityEngine.TextureFormat|System.Boolean"),result,{&w,&h,&format,&mip});
+        if(linear)
+            call(method("Texture2D",".ctor","System.Int32|System.Int32|UnityEngine.TextureFormat|System.Boolean|System.Boolean"),result,{&w,&h,&format,&mip,&linear});
+        else call(method("Texture2D",".ctor","System.Int32|System.Int32|UnityEngine.TextureFormat|System.Boolean"),result,{&w,&h,&format,&mip});
         int point=0,clamp=1;
         call(method("Texture","set_filterMode","UnityEngine.FilterMode"),result,{&point});
         call(method("Texture","set_wrapMode","UnityEngine.TextureWrapMode"),result,{&clamp});

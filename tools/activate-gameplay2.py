@@ -7,6 +7,7 @@ import os
 import time
 import copy
 from pathlib import Path
+import efml_support
 
 ROOT=Path(__file__).resolve().parents[1]
 def load(name,path):
@@ -16,6 +17,34 @@ def load(name,path):
 def main(old_kind='gameplay',new_kind='gameplay2'):
     source=ROOT/f'build/native/endcraft.{new_kind}.dll'
     if not source.is_file(): raise RuntimeError('Build the new bridge successfully before retiring the old one.')
+    if efml_support.available():
+        old='endcraft.'+old_kind
+        registered=efml_support.modules()
+        if any(m['id']=='endcraft.'+new_kind for m in registered):
+            raise RuntimeError('New module is already registered; preserve its potentially loaded DLL.')
+        previous=next((m for m in registered if m['id']==old),None)
+        if previous is None: raise RuntimeError('Old module not registered with EFML.')
+        report=load('endcraft_report',ROOT/'tools/runtime-report.py')
+        if previous.get('enabled',False):
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    report.collect('status',ROOT/'reports/gameplay-disable-old.json',old,{'action':'disable'})
+                    for attempt in range(30):
+                        report.collect('status',ROOT/'reports/gameplay-retire-old.json',old)
+                        body=json.loads((ROOT/'reports/gameplay-retire-old.json').read_text())['body']['gameplay']
+                        if not body['active'] and not body.get('character_hidden',False) and not body.get('host_input_mask',{}).get('acquired',False): break
+                        time.sleep(.2)
+                    else: raise RuntimeError('Old bridge has not restored the character.')
+            except OSError:
+                installer=load('endcraft_installer',ROOT/'tools/install-probe.py')
+                if installer.game_running(): raise
+        print(efml_support.command('disable',old))
+        register=load('endcraft_registration',ROOT/'tools/register-inspector.py')
+        register.main(new_kind)
+        config=dict(previous.get('configuration',{}))
+        print(efml_support.command('config','endcraft.'+new_kind,json.dumps(config)))
+        print(efml_support.command('enable','endcraft.'+new_kind))
+        return
     installer=load('endcraft_installer',ROOT/'tools/install-probe.py')
     state=json.loads(installer.STATE.read_text())
     # An earlier run enabled auto-start only in the project index. Accept exactly
@@ -34,7 +63,7 @@ def main(old_kind='gameplay',new_kind='gameplay2'):
     installer.STATE.write_text(json.dumps(state,indent=2))
     report=load('endcraft_report',ROOT/'tools/runtime-report.py')
     old_enabled=any(r['id']=='endcraft.'+old_kind and r.get('enabled',False) for r in project['modules'])
-    if old_enabled:
+    if old_enabled and installer.game_running():
       with contextlib.redirect_stdout(io.StringIO()):
         report.collect('status',ROOT/'reports/gameplay-disable-old.json','endcraft.'+old_kind,{'action':'disable'})
         for attempt in range(20):
@@ -54,6 +83,7 @@ def main(old_kind='gameplay',new_kind='gameplay2'):
             temporary=path.with_name(path.name+'.endcraft-retire')
             with temporary.open('xb') as stream: stream.write(json.dumps(data,ensure_ascii=False).encode())
             os.replace(temporary,path);changed.append(path)
+        installer.release_external_ownership(state,Path(state['game_dir']).resolve())
         for record in state['files']:
             if Path(record['path']) in changed: record['sha256']=installer.sha(Path(record['path']))
         installer.STATE.write_text(json.dumps(state,indent=2))
@@ -67,6 +97,6 @@ def main(old_kind='gameplay',new_kind='gameplay2'):
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser()
-    parser.add_argument('--old',choices=['gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34'],default='gameplay')
-    parser.add_argument('--new',choices=['gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34'],default='gameplay2')
+    parser.add_argument('--old',choices=['gameplay','gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'],default='gameplay')
+    parser.add_argument('--new',choices=['gameplay2','gameplay3','gameplay4','gameplay5','gameplay6','gameplay7','gameplay8','gameplay9','gameplay10','gameplay11','gameplay12','gameplay13','gameplay14','gameplay15','gameplay16','gameplay17','gameplay18','gameplay19','gameplay20','gameplay21','gameplay22','gameplay23','gameplay24','gameplay25','gameplay26','gameplay27','gameplay28','gameplay29','gameplay30','gameplay31','gameplay32','gameplay33','gameplay34','gameplay35','gameplay36','gameplay37','gameplay38'],default='gameplay2')
     args=parser.parse_args();main(args.old,args.new)
