@@ -1,92 +1,58 @@
-# 故障排查与恢复
+# 故障排查与恢复（4.2.1）
 
-先确认仅有一个 EndCraft 玩法模块和一个项目 MC 进程。不要用删存档、覆盖加载中的 DLL 或重复启动多个客户端来尝试恢复。
+当前启动流程见 [README](../README.md)：**官方鹰角启动器启动终末地，EFML xinput 代理加载 probe 与 gameplay39，再启动 MC。** 排错时保留现有存档，只运行一个 MC 桥接客户端和一个玩法模块。
 
-## 常见现象
+## 启动与连接
 
-| 现象 | 先检查 | 处理 |
-|---|---|---|
-| 无 MC 物品栏 | 是否已进入可移动场景；MC 启动日志是否仍在下载／加载 | 等待首次加载，检查 Host 和玩法状态 |
-| MC 日志反复显示 “Endfield has not created it yet” | Better-Endfield 中是否导入并启用了 `endcraft.probe` | 导入发行附件中的 `EndCraft-probe-*.zip` 并启用，重启终末地 |
-| MC 窗口消失后终末地中也没有 MC | MC 日志是否有 `OutOfMemoryError`；启动器给的内存（PCL 自动分配可能只有 512 MB） | 窗口隐藏本身是正常的；在启动器中把游戏内存手动设为 4 GB，只启动一个 MC |
-| 导入模块提示“缺少有效的 author” | 是否为 4.1.0 附件 | 改用 4.1.2 及以后的附件 |
-| 导入模块提示“文件数量超过 4096” | 是否选了源码包（4.1.0 为 `EndCraft-*-source.zip`） | 源码包不能导入，只导入两个模块 ZIP；4.1.2 起源码包为 `.tar.gz` |
-| MC 提示“已有另一个 MC 连接着终末地” | 是否同时开了两个 MC | 关闭多余的 MC；同一时间只有一个 MC 能连接终末地 |
-| 只有 UI，没有史蒂夫 | 是否第一人称、原生角色是否死亡 | F5；关闭原生菜单；`/endcraft recover`；原角色死亡时先正常复活 |
-| 原生传送后异常 | 是否仍在加载或菜单、MC 是否重新确认位置 | 关闭菜单后等待，再执行恢复；不要反复远距离传送 |
-| 空旷地面／坡面卡住 | 新地形采样是否就绪；是否在多层结构 | 松开移动、恢复位置；换单层开阔区域测试，记录场景与诊断 |
-| 玻璃不透明、水静止 | 是否仍加载旧玩法模块或旧 MC 源码 | 确认 `endcraft.gameplay33`；正常重启项目 MC，再检查渲染错误与动画计数 |
-| 两款游戏同时响应按键 | 分号当前状态、MC 库存是否打开 | 这是 3.0 已知输入限制；先收起库存、松开按键，避免同时操作 |
-| 创造模式仍显示旧损伤 | 模式是否切成功、当前原生角色是否更换 | 免伤不补满旧血量；看后续受击是否继续掉血及 protection_error |
-| 鞘翅不展开 | 胸甲栏是否穿戴、是否已经离地 | 空中再按空格；先在高处开阔区域测试 |
-| NPC 不上船 | 类型／体型、距离、座位是否空闲 | 换普通体型、空座位及空旷位置；不是所有 NPC 都支持 |
-| TNT 没炸开原生岩石 | 是否只有 MC 方块／敌人效果、是否已取得原生炸弹样本 | 原生岩石接口未完成验收，不属于 3.0 保证功能 |
-| MC 启动报 `NoClassDefFoundError: software/bernie/geckolib/...` | `mc-neoforge/libs/` 是否缺 `geckolib-neoforge-1.21.1-4.9.3.jar` | 运行 `python tools/fetch-neoforge-mods.py` 重新校验补齐；YSM 需要这个外置前置 |
-| 枪械进游戏没有模型/材质 | 枪包 zip 是否已放入 `mc-neoforge/run/tacz/` | 放入后游戏内执行 `/tacz reload`；服务端数据与客户端资源都要有枪包 |
-| YSM 玩家还是默认皮肤 | 模型包是否放入 `mc-neoforge/run/ysm/` | 放入后 F3+T 重载资源；确认模型包与 YSM 2.6.3 版本匹配 |
-| 加入内容模组后启动崩溃（Mixin apply failed） | 崩溃报告里的 mixin 类名是否属于本项目或内容模组 | 先运行 `gradlew build`：`MixinTargetTest` 会在静态阶段报出新的共享注入目标；不要绕过测试直接删模组 |
+| 现象 | 检查与处理 |
+|---|---|
+| “请通过官方启动器打开游戏” | 关闭提示，回到官方鹰角启动器开始游戏；不要直接运行 Endfield.exe，也不要沿用第三方直接启动／直接注入流程 |
+| EFML 的旧启动按钮仍报上述提示 | 先确认 xinput 代理已安装，再直接从官方鹰角启动器开始游戏；该按钮不是必需步骤 |
+| EFML 提示已有未知 xinput1_4.dll | 用原安装工具卸载旧代理，再安装 EFML 代理；不要覆盖来源不明的文件 |
+| MC 一直等待 Endfield 创建共享内存 | 检查 EFML 中 probe 与 gameplay39 是否都启用、宿主是否加载成功；终末地应处于可移动场景 |
+| MC 在终末地进菜单后暂时停住 | 收起原生菜单、等待加载完成，再检查桥接状态；不要重复启动 MC |
+| MC 窗口隐藏 | 连接后自动隐藏是正常现象；切回终末地查看 MC HUD |
+| MC 窗口消失，终末地也无 HUD | 查看 MC 日志是否崩溃或内存不足；将 MC 内存手动设为 4 GB，检查 Java 25 和 JVM 参数 |
+| 提示已有另一个 MC 连接 | 正常退出多余的桥接客户端，再启动一个实例 |
+| MC 回到标题或模组列表后不自动进世界 | 正常退出并重新启动同一个 MC 实例；保留存档 |
+| 模块导入失败 | 使用 4.2.1 的两个模块 ZIP，源码 tar.gz 和 MC JAR 不导入 EFML |
 
-## 读取诊断
+## 画面、控制与战斗
 
-在安装工作目录运行。RPC 凭据由工具自动读取，**不要打印或分享完整索引文件**。
+| 现象 | 检查与处理 |
+|---|---|
+| 有 HUD 没有人物 | 检查是否第一人称、角色是否死亡；按 F5，收起原生菜单，必要时执行 `/endcraft recover` |
+| 方块／颜色仍表现为旧版本 | 核对实际加载的 gameplay39 与 MC JAR，正常重启后检查 `render_error`、`pipeline_error` |
+| MC 与终末地同时响应 | 分号关闭独占时可能同时响应；收起 MC 菜单、松开按键后切换独占 |
+| Z 配件界面偏暗或按钮穿透 | 确认加载的是当前宿主和包含 4.2 渲染修正的 MC JAR；提供复现时的界面状态和错误字段 |
+| 换算伤害异常 | 检查 `combat.damage_model` 是否为 `player_attack`、倍率是否为 1，再记录 `last_mc_damage`、`last_player_attack`、`last_host_damage` 与 `combat.error` |
+| 创造模式仍有旧损伤 | 免伤不会补满此前损失的原生血量；看后续受击是否继续扣血 |
+| 新地形或多层结构卡住 | 松开移动并执行恢复，先换开阔区域验证；复杂地形不能仅靠恢复键解决 |
+| 女仆穿地、NPC 不上船、船体异常 | 这些场景尚未完整验收；保存并记录场景、位置与动作，不将短程通过等同于全面兼容 |
+| YSM 阻断 MC 启动 | 当前开发组合因 err:54 停用 YSM；不要按旧教程直接恢复它来解决模型问题 |
+| 枪包不显示 | 正式 MC 实例使用其游戏目录下的 `tacz/`；项目开发实例为 `mc-neoforge/run/tacz/`。按枪械模组规则重载 |
+
+## 日志与状态
+
+正式实例查看**该实例游戏目录**下的 `logs/latest.log`。开发 NeoForge 查看 `mc-neoforge/run/logs/latest.log`；Fabric 为 `mc/run/logs/latest.log`。EFML 日志和设置默认在 `%LOCALAPPDATA%/EFML`，设置过 `EFML_HOME` 时使用该目录。
+
+有源码工具时，可在仓库根目录读取状态：
 
 ```powershell
 python tools/runtime-report.py host-status --output reports/host-status.json
-python tools/runtime-report.py status --module endcraft.gameplay33 --output reports/gameplay33-status.json
+python tools/runtime-report.py status --module endcraft.gameplay39 --output reports/gameplay39-status.json
 ```
 
-| 字段 | 含义 |
-|---|---|
-| `gameplay.active` | 桥接正在运行；本身不能证明画面正确 |
-| `guest_ready` | MC 已进入世界并确认本轮位置同步 |
-| `host_menu`、`host_teleporting` | 原生菜单或传送正在暂停桥接 |
-| `error`、`render_error`、`pipeline_error` | 控制、消息渲染、绘制阶段错误 |
-| `avatar_vertices`、`visible_meshes` | 模型是否上传及被宿主判为可见 |
-| `origin_raw_units` | 这个 MC 世界对应的宿主坐标锚点 |
-| `transparency.layer_meshes` | 分离的透明／流体渲染网格数 |
-| `transparency.atlas_regions`、`atlas_uploads` | 纹理动画接收及应用计数 |
-| `combat.hurt_reactions` | 原生受击请求、调用和状态变化 |
-| `combat.native_explosions` | 原生炸弹样本与可命中物转交状态 |
+`guest_ready` 表示 MC 已确认本轮同步；`host_menu` 表示原生菜单状态；`error`、`render_error`、`pipeline_error` 分别记录控制、渲染消息和绘制错误。计数曾经增加不代表当前帧正常，应比较前后报告并核对实际画面。
 
-累计计数非零不代表当前帧正常；比较两次报告时看是否增长，同时检查错误和实际画面。
+不要分享完整模块索引或 RPC 凭据。报告问题时提供版本、MC 实例、复现动作和必要的日志片段，去掉 UID 与个人路径。
 
-常用日志：
+## 开发实例恢复
 
-- `reports/guest-startup.log`：项目 MC 的启动、依赖与资源加载。
-- `mc/run/logs/latest.log`：MC 当前会话。
-- 游戏目录 `EndCraft-loader.log`：加载器定位 Host 的结果。
-- Host 的用户配置／日志目录：`%LOCALAPPDATA%/BetterEndfield`。
-
-提交故障时说明终末地版本／场景、MC 模式、发生前的动作及相关错误字段。只分享必要的诊断片段；先去掉凭据、UID 和个人路径。
-
-## 脚本报“现有文件已保留”
-
-安装工具记录自有文件的路径和 SHA256。文件已被用户或其他程序修改时，工具停止覆盖或删除。先核对文件是谁创建的，再处理冲突；不要删除安装清单来让脚本强行接管现有文件。
-
-模块包存在通常表示已经注册；Windows 会保持已加载 DLL 的映像。正常关闭游戏后再处理更新，或者使用新的模块身份执行受控升级。
-
-## 自动 MC 启动失败
-
-确认项目目录未移动、JDK 25 路径存在，并含 `javac.exe`。可手动启动并看完整输出：
+已进入终末地可移动场景、且没有另一个桥接 MC 时：
 
 ```powershell
-.\tools\start-guest.ps1 -JavaHome 'C:\你的路径\jdk-25'
+.\tools\start-neoforge.ps1 -BridgeHost -JavaHome 'C:\你的路径\jdk-25'
 ```
 
-默认 JDK 路径不适用时，按 [安装教程](INSTALL.md) 设置 `ENDCRAFT_JAVA_HOME` 并重新打开原启动器。脚本只复用该项目自己的 MC；发现另一个带 EndCraft/SkyCraft 隐藏启动标志的开发客户端时会停止，以免重复写共享内存。
-
-## 停用与回退
-
-准备下一次启动不自动开启桥接：
-
-```powershell
-python tools/configure-gameplay-startup.py --manual --module gameplay33
-```
-
-该命令不立即停用当前桥接。当前操作异常时正常退出游戏，再按手动模式启动。
-
-回退到 2.0 需要保持宿主模块与 MC 版本配套，并只启用一个玩法模块。先备份存档和锚点，不覆盖加载中的模块包。新版本产生的建筑仍是存档数据；回退不会自动删除它们。
-
-## 什么不能靠恢复键解决
-
-恢复键主要解决位置／角色同步；它不会实现多层地形网格、修复所有 NPC 寻路、添加光影兼容或完成原生岩石破坏。若在同一地形反复卡住，应记录复现场景并停止在该处继续建造测试。
+这是启动项目的 NeoForge 开发客户端。PCL2、HMCL 实例应从自己的 MC 启动器启动；不要误用默认选择 Fabric 的通用旧脚本来替代它。位置恢复指令不会升级模组、补齐光影功能或修复全部地形与 NPC 行为。

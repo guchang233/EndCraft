@@ -1,210 +1,57 @@
-# NeoForge 1.21.1 与机械动力航空学（EndCraft 4.1）
+# NeoForge 1.21.1 开发与兼容状态（4.2.1）
 
-EndCraft 4.0 新增、4.1 加入局域网联机的 NeoForge 1.21.1 客户端，可在终末地场景中使用 Create、机械动力航空学与 Create: Flight Control。已在开发机上完成首轮实机测试（见下方“实机测试记录”）；仍属实验性联动，**尚未标记为航空学完全兼容**，未完成项见文末。
+面向使用源码的开发者。普通安装与启动以 [README](../README.md) 为准：终末地从官方鹰角启动器启动，EFML 通过 xinput 代理加载模组，再运行 MC。
 
-## 为什么使用 1.21.1
+## 固定组合
 
-航空学的官方项目使用 NeoForge 1.21.1，无法直接安装到现有 Fabric 26.3 实例。4.0 保留原 Fabric 工程，新增 `mc-neoforge/`，使用全新目录和存档；宿主通信仍使用协议 12，两个客户端共用同一个宿主模块。
-
-| 组件 | 固定版本 |
+| 组件 | 版本／状态 |
 |---|---|
-| EndCraft Guest | `4.2.0` |
-| Minecraft | 1.21.1 |
-| NeoForge | 21.1.247 |
-| Create | 6.0.10+mc1.21.1 |
-| Create Aeronautics | 1.3.2+mc1.21.1，bundled 文件 |
-| Sable | 2.0.6+mc1.21.1 |
-| Create: Flight Control | 0.7.7（代码 GPL-3.0，资源保留所有权利） |
-| GeckoLib | 4.9.3（YSM 的外置前置，锁定在 Modrinth 发布文件） |
-| TaCZ（1.21.1 NeoForge 移植） | 1.1.8-hotfix-r7 |
-| Yes Steve Model | 2.6.3-neoforge+mc1.21.1 |
-| Touhou Little Maid | 1.5.3-neoforge+mc1.21.1 |
-| Maid Addition | 1.0.1-beta（无发布主页，仅本地哈希锁定） |
-| Java | JDK 25；桥接类使用 Java 22 字节码和 Foreign Function & Memory API |
-| 宿主模块 | `endcraft.gameplay34`（F1/F3 转发）；`gameplay33` 仍可用，协议 12 |
+| EndCraft / 宿主 | 4.2.1 / endcraft.gameplay39；协议 12，需同时启用 probe |
+| Minecraft / NeoForge | 1.21.1 / 开发构建 21.1.247；正式 21.1.257 实例已接通 |
+| Java | JDK 25；NeoForge 构建还使用 Java 21 工具链 |
+| Create / Aeronautics | 6.0.10 / 1.3.2 bundled |
+| Sable / Flight Control | 2.0.6 / 0.7.7 |
+| TaCZ / Touhou Little Maid | 1.1.8-hotfix-r7 / 1.5.3 |
+| GeckoLib | 4.9.3 |
+| YSM | 2.6.3，因本机原生库 err:54 停用，保存在 libs-disabled 供审计 |
+| Maid Addition | 1.0.1-beta，可选本地文件；缺失不阻断构建 |
 
-参考：[航空学官方源码](https://github.com/Creators-of-Aeronautics/Simulated-Project)、[Create 官方依赖指南](https://wiki.createmod.net/developers/depend-on-create/neoforge-1.21.1)、[Sable 官方源码](https://github.com/ryanhcode/sable)。依赖文件名、下载地址和 SHA-512 固定在 `mc-neoforge/modpack.lock.json`，不使用“自动下载最新版”。
+来源、文件名、下载地址与 SHA-512 以 [modpack.lock.json](../mc-neoforge/modpack.lock.json) 为准。第三方 JAR、用户枪包、模型包与光影包不附在 EndCraft 发行附件中。
 
-## 已移植的部分
+## 构建与启动
 
-- 用 NeoForge 注册、事件和网络 Payload 替换 Fabric 入口；保留角色、伤害代理、游戏模式、重生和共享内存通信代码。
-- 将 26.3 的输入接口改为 1.21.1 的 GLFW 回调，转换宿主 SDL 按键码，保留 WASD、鼠标、聊天和库存操作。
-- 重写 1.21.1 方块网格、实体、方块实体和纹理导出；透明面、流体与纹理动画使用现有协议传给宿主。
-- 捕获 Create 的方块实体及移动装置渲染。桥接期间请求 Flywheel 使用普通渲染路径，因为实例化绘制不会经过网格捕获接口。
-- 增加 Sable 适配：读取船体的插值姿态，将远端 plot 方块坐标转换到世界坐标，再相对场景原点打包，避免大坐标直接转成浮点数导致抖动。
-- 默认独立启动不连接宿主；只有指定桥接选项才连接。两种桥接客户端启动脚本都有防重复写入检查。
-
-这些是实现和静态验证结果。**不把“代码已写”“模组依赖已下载”当成“游戏内兼容已确认”。**
-
-## 内容模组（4.2.0 实验性）
-
-4.2.0 在 NeoForge 客户端加入四个内容模组：TaCZ 枪械、Yes Steve Model 玩家模型、Touhou Little Maid 女仆与 Maid Addition 女仆区块加载辅助。它们随项目 JAR 一起放在 `mc-neoforge/libs/`，以 `runtimeOnly` 加载；来源、版本和 SHA-512 记录在 `modpack.lock.json`，其中四件对应 Modrinth 发布文件，`maidaddition` 无发布主页，脚本只校验本地文件哈希、不下载。`tools/fetch-neoforge-mods.py` 会校验全部九件。
-
-### 静态兼容审计（已完成）
-
-- **前置补齐**：YSM 2.6.3 既不内嵌 GeckoLib 类也无 jarjar 依赖声明，直接加载会在运行时因缺 GeckoLib 而失败。已锁定 GeckoLib 4.9.3（NeoForge 1.21.1）作为外置前置；Touhou Little Maid 自带 geckolib3 fork，Maid Addition 自带 apfloat/jgrapht，TaCZ 自带 luaj/bcel/simplebedrockmodel，均自足。`MixinTargetTest` 有守卫：YSM 一旦内嵌 GeckoLib 会提示可移除外置件，GeckoLib 从锁文件消失会失败。
-- **Mixin 目标重叠**：本项目的 Mixin 与四个模组的 Mixin 在 7 个类上重叠（`AbstractArrow`、`Projectile`、`Entity`、`Player`、`ServerPlayer`、`LevelRenderer`、`MouseHandler`）。逐一比对了发布字节码的注入点：TLM 的 `EntityMixin` 包装的是 `move` 方法内对 `collide` 的调用点而本项目注入的是 `collide` 方法本身；TLM 的 `ArrowMixin` 在 `tick` HEAD 注入而本项目只在 `tick` 内包装 `Level.clip` 调用点；其余均无方法级交集。允许清单写死在 `MixinTargetTest.ALLOWED_SHARED_MIXIN_TARGETS`，出现清单外的新重叠时测试直接失败，需要重新人工评估。
-- **Veil**：TaCZ 官方标注的已知冲突（与 Veil 3.1.2 之前）不适用——Sable 内嵌 Veil 4.3.2 已修复；本项目的 `VeilPostMixin` 目标有效性由现有字节码审计测试覆盖。
-- **导出预算**：实体导出上限从 96 提高到 192（女仆、扫帚和枪械投射物很快占满旧预算）；方块实体预算 256 不变。
-
-### Yes Steve Model：阻断启动，已隔离
-
-实机启动时 YSM 在构造阶段抛异常（`Failed to load native lib` → `[YSM] Unsatisfied runtime environment: err: 54`），NeoForge 因此停在 `LoadingErrorScreen`，**整个客户端进不了世界**。它不是“功能缺失”，而是阻断启动，所以 4.2.0 把它从 `libs/` 移到 `libs-disabled/`，并在锁文件里标记为 `disabled`（保留哈希与来源，恢复时删掉 `disabled` 两行并把 jar 移回即可）。
-
-排查过的方向：`ysm-core.dll` 只依赖 KERNEL32/SHELL32/bcrypt，系统 VC 运行库齐全，不是缺依赖；`--enable-native-access` 已由启动参数放行。YSM 官方 issue #155 是同一错误码，归因于图形注入层；本机的 NVIDIA Overlay 与 Oray 驱动是下一步要排查的对象。
-
-GeckoLib 4.9.3 仍保留在锁文件中（YSM 一旦恢复就需要它）；`MixinTargetTest` 会检查被禁用的 jar 仍然留在 `libs-disabled/`，防止“禁用后文件被随手删掉”。
-
-### 实机结果（2026-10-12，桥接模式）
-
-隔离 YSM 后重启，桥接完整建立：进入镜像世界、读到宿主世界 536116223、重发方块网格、玩家传送到 `-18.67 66.52 -20.27` 并切到第三人称让宿主绘制史蒂夫。TaCZ、Touhou Little Maid、Maid Addition 三者在桥接中均加载并运行，没有产生加载错误。
-
-日志里唯一的错误是 `Failed to create shader veil:light/indirect_sphere: Failed to compile compute shader`（Veil 的某个计算着色器编译失败，随后回退 legacy 路径），没有阻断启动；它对本项目的导出画面是否有影响仍需单独确认。
-
-### 已知语义交互与待实测项
-
-- TLM 扫帚做物理检查时跳过 `collide` 调用，此时扫帚不与本项目的终末地地形碰撞（可能穿地）——这是女仆模组的主动行为，不崩溃，待实测确认表现。
-- TaCZ 标注“特定条件下第一人称手部消失”，桥接模式不导出第一人称手臂，预期无影响。
-- 枪械射击、换弹与女仆的 GeckoLib 动画走标准实体渲染调度，网格捕获理论上有效，但**是否真的被导出到终末地、有没有特效绕过捕获，需要逐项验证**，不能只凭加载成功就认定兼容。
-- Maid Addition 会让女仆加载周围区块，可能扩大进入导出预算的实体数量，需要实测帧率与预算表现。
-- YSM 恢复前需要解决 `err: 54`（先排查 NVIDIA Overlay 与 Oray 向日葵驱动）。
-
-## 构建，不启动游戏
-
-在项目根目录执行：
+按 [安装与源码构建](INSTALL.md) 准备工具链，在仓库根目录运行：
 
 ```powershell
-python tools/fetch-neoforge-mods.py
 .\tools\build-native.cmd
-.\tools\build-neoforge.ps1
-```
-
-已有 `build/native/endcraft-standin.exe` 和 `endcraft.probe.dll` 时，可以跳过原生构建。它们供隔离的共享内存测试使用，不接入游戏进程。
-
-指定 JDK 或离线重建：
-
-```powershell
+python tools/fetch-neoforge-mods.py
 .\tools\build-neoforge.ps1 -JavaHome 'C:\你的路径\jdk-25'
-.\tools\build-neoforge.ps1 -Offline
 ```
 
-离线选项要求 Gradle、NeoForge 和测试依赖已经缓存。此脚本只执行 `build`，不调用 `runClient`。
+产物为 `mc-neoforge/build/libs/endcraft-neoforge-guest-4.2.1.jar`。缓存完整后可用 `-Offline` 构建；构建本身不启动游戏。
 
-产物：
-
-- `mc-neoforge/build/libs/endcraft-neoforge-guest-4.1.2.jar`
-- 同目录的 `-sources.jar`
-- `mc-neoforge/build/reports/tests/test/index.html`：测试报告
-
-本机 37 项非游戏测试通过，覆盖射线／碰撞、下船落点、输入映射、网格格式、大坐标精度、共享内存心跳与重连，以及配置的 Mixin 目标与 Sable 反射接口。字节码检查不加载游戏，也不能证明多个模组的运行时注入顺序和画面表现正确。
-
-## 允许实测后如何启动
-
-**以下命令会启动 MC，仅在用户明确允许实测后执行。当前没有执行，也没有修改本机的加载器选择。**
-
-先独立检查模组是否能加载：
+终末地需先经官方启动器进入可移动场景，EFML 已加载 probe 与 gameplay39，然后运行：
 
 ```powershell
-.\tools\start-neoforge.ps1
+.\tools\start-neoforge.ps1 -BridgeHost -JavaHome 'C:\你的路径\jdk-25'
 ```
 
-独立模式显示 MC 窗口，默认不连接终末地，不会自动打开桥接存档。可创建一个新的创造存档检查 Create 和航空学。
+省略 `-BridgeHost` 时是独立 MC 开发模式。开发世界保存在 `mc-neoforge/run/saves/`，不要打开 Fabric 26.3 存档。正式 MC 启动器实例使用自己的游戏目录；其 JVM 参数见 README。
 
-接入已经运行的 EndCraft 宿主：
+## 已有实现与验证范围
 
-```powershell
-.\tools\start-neoforge.ps1 -BridgeHost
-```
+- NeoForge 注册、输入、共享内存、角色与方块桥接已有实机记录。宿主与两款 MC 客户端使用协议 12。
+- 方块、实体、方块实体、标准图集粒子和字体有网格导出路径；HUD、第一人称和菜单使用 MC 像素读回。渲染覆盖范围见 [渲染说明](RENDERING.md)。
+- TaCZ 的配件界面临时切换第一人称、去除暗色背景并隔离原生 UI 点击；用户已确认亮度与点击正常。
+- gameplay39 改用角色攻击力换算伤害；公式与配置检查通过，真实命中扣血尚未验证，见 [伤害说明](COMBAT.md)。
+- Create/Flywheel 请求普通渲染路径；Sable 船体姿态、坐标变换和地形体素已接入。完整飞船起降、站立、碰撞、NPC 登船和飞控操作仍需实机验收。
+- Mob 接入三角面碰撞，女仆短程行走曾通过，但仍有掉出世界记录；长期支撑不能作为已完成功能。
+- 两台电脑各运行终末地的完整联机尚未验证，现有 MC LAN 流程见 [联机说明](MULTIPLAYER.md)。
 
-此模式连接后隐藏 MC 窗口，并创建／打开 `mc-neoforge/run/saves/EndCraft-Neo-Bridge`。启动前必须正常保存退出旧 Fabric 桥接客户端；脚本发现旧写入进程会拒绝启动。
+`MixinTargetTest` 检查注入目标、锁定内容模组的共享目标以及依赖哈希；Maid Addition 未提供时不审计该可选文件。静态审计通过不等于第三方模组全部实机兼容。
 
-如果现有宿主会自动拉起 Fabric，可在**之后获准的测试会话**将启动器继承的加载器选择改为 NeoForge：
+## 光影与性能
 
-```powershell
-[Environment]::SetEnvironmentVariable('ENDCRAFT_GUEST_LOADER', 'neoforge', 'User')
-```
+Iris/Sodium 与用户提供的光影包使用独立的可选锁文件。当前提供完整 MC 画面的实验性预览，尚未将光影与终末地原生场景深度融合。操作与限制见 [渲染说明](RENDERING.md)。
 
-正常退出游戏和原启动器，重新打开启动器，使其继承新环境变量。宿主仍调用原来的 `tools/start-guest.ps1`，该脚本据变量选择客户端。此选择不会自动安装或替换 Host。
-
-日志在 `reports/neoforge-startup.log` 和 `mc-neoforge/run/logs/latest.log`。首次启动还会下载 1.21.1 的资产；构建成功不代表资产已全部缓存。
-
-## 升级宿主模块到 gameplay34（4.1）
-
-`gameplay34` 与 `gameplay33` 只差一处：转发 F1（隐藏 MC HUD）和 F3（调试界面、F3+B 碰撞箱）。已加载的模块不能覆盖，按新模块身份注册并切换，保留现有世界锚点：
-
-```powershell
-python tools/runtime-report.py status --module endcraft.gameplay33 --output reports/before-upgrade.json
-python tools/register-inspector.py gameplay34
-python tools/activate-gameplay2.py --old gameplay33 --new gameplay34
-python tools/configure-gameplay-startup.py --auto-start --module gameplay34 --anchor-report reports/before-upgrade.json
-```
-
-然后完全退出并重新启动终末地。不升级时其余功能照常可用，只是 F1/F3 不会传到 MC。
-
-## 局域网联机
-
-主机开放局域网、其他玩家加入、两边都运行终末地时的锚点对齐，见 [局域网联机说明](MULTIPLAYER.md)。
-
-## 存档与回退
-
-不要把 `mc/run/saves` 的 26.3 存档复制给 1.21.1 打开。物品、数据组件和存档格式都存在差异，当前没有降级转换器。
-
-回退时正常保存退出 NeoForge，再清除选择并重新打开启动器：
-
-```powershell
-[Environment]::SetEnvironmentVariable('ENDCRAFT_GUEST_LOADER', $null, 'User')
-```
-
-默认恢复 Fabric。旧 `mc/` 工程、旧存档、已安装模块和宿主锚点没有在本次迁移中被覆盖。两个实例的建筑和库存相互独立。
-
-## 实机测试记录（2026-10-08）
-
-- 模组组合可以加载；桥接模式连接终末地，传送、地面抬升、宿主 NPC 替身正常。
-- 首轮测试修正：实体类型改为 `DeferredRegister` 注册；Flywheel `VisualizationManager` 是接口，Mixin 改为接口并使用 `LevelAccessor` 参数。`MixinTargetTest` 增加了接口目标、`@Inject` 参数和 `@WrapOperation` 签名检查。
-- 在 `EndCraft-Neo-Bridge` 中放置了 Create 夹具（动力源、传动轴、齿轮、玻璃、水），并生成了 Sable 测试船体；`render_audit` 捕获到 1 个批次、180 个顶点。
-- **黑屏问题**：联机后终末地只显示 MC HUD，背景全黑。`overlay_audit` 测得导出帧约 99% 像素为 alpha=255 的黑色。有两个来源：Sable 内置的 Veil 在世界渲染后运行 `composite` 后处理，经无 alpha 的 RGB16F 缓冲写回主帧缓冲；1.21.1 的屏幕暗角（vignette）混合模式也会把整屏 alpha 写成 1。已增加 `VeilPostMixin` 和 `GuiVignetteMixin`，联机期间跳过这两步。重启后实测：导出帧约 98% 像素完全透明，不透明像素只剩 HUD。
-- **物理体有时无法被物理杖选中、无法左键破坏**：Sable 把射线命中船体的位置报告为 plot 坐标（约 2000 万格外），并改写了 MC 自己的距离判断；本项目的 `SkyClip` 却用原始坐标比较 MC 命中与终末地地形命中，船体总被判定为更远，准星沿线只要有终末地地形就被地形抢走。现改为先用 `SableCompanion.projectOutOfSubLevel` 投影回世界坐标再比较。`pick_probe` 实测：原始距离 28,968,096 格，投影后 11.08 格，命中保留为船体方块。
-- **方块遮挡错误**：移植时 `ClientLevelDigMixin` 只重发方块所在的 16³ 区段，不像原 Fabric 版那样挂 `setSectionDirty`；区段边界上放置／破坏方块后，相邻区段被剔除的面不会更新，出现透视破洞或残留面。现在 `LevelRendererMixin` 挂 1.21.1 的 `setSectionDirty(IIIZ)`，方块改动、相邻区段、区块加载、光照更新都会重发；同时恢复被遗漏的 `SkyDigClient.blockChanged`，周期扫描只补发尚未导出的区段。
-- **船体／Create 部件之间层级错乱**：动态网格（Sable 船体、方块实体、实体）的“是否半透明”原来靠 RenderType 描述文本里有没有 `translucent`／`alpha`／`text` 来判断，而每个描述都含 `texture[...]`，于是全部被标成半透明，宿主不写深度、按提交顺序叠画。现改为读取 RenderType 的透明度设置（`no_transparency` 即不透明）。`rendertype_probe` 实测：solid、cutout、entitySolid、entityCutout 为不透明，translucent、entityTranslucent 为半透明。
-- **放置的方块隔一段时间消失，在旁边再放一个又出现**：终末地在渲染端未就绪（场景切换、菜单、重新初始化）时会丢弃收到的网格消息，处理时出现托管异常也会丢弃该区段；场景重载还会销毁已有的区段对象。原 Fabric 版在终末地世界编号（epoch）变化时会清空并全量重发，移植版缺了这一步，之前每 20 帧的全量重扫恰好掩盖了问题。现在：epoch 变化时先发 `ClearAll` 再全量重发；终末地加载／菜单期间暂停发送，恢复后重发已导出区段；没有新改动时每 4 帧轮换重发一个已导出区段，丢失的区段会自动恢复。实测重启后终末地持有区段从 16（含失效残留）变为 2、可见网格从 0 变为 3，未再出现新的丢弃。
-- **不自动进图**：Create／Sable 的世界数据使 1.21.1 把桥接存档标为实验性设置，打开时弹出备份确认页，而桥接模式下 MC 窗口隐藏，无法点击。`MirrorWorld` 现在在打开自己的桥接存档时自动选择“不备份直接继续”。重启后实测可以自动进入存档。
-
-运行时诊断（只对本项目 NeoForge 客户端生效）：
-
-```powershell
-.\tools\test-neoforge-runtime.ps1 -Operation status         # 玩家、界面、Sable 船体
-.\tools\test-neoforge-runtime.ps1 -Operation overlay_audit  # 导出帧透明度
-.\tools\test-neoforge-runtime.ps1 -Operation render_audit   # Sable 网格捕获与批次透明标记
-.\tools\test-neoforge-runtime.ps1 -Operation stage_probe    # 各渲染阶段与 HUD 图层的像素
-.\tools\test-neoforge-runtime.ps1 -Operation pick_probe     # 朝首个船体的射线命中与距离
-.\tools\test-neoforge-runtime.ps1 -Operation rendertype_probe # 渲染类型的半透明判定
-```
-
-## 实机测试记录（2026-10-09，4.1）
-
-- **局域网联机**：同一台电脑上第二个 NeoForge 客户端（不连接终末地）通过局域网列表加入主机世界；离线模式登录、Sable 握手通过，访客出现在主机身边，并以 MC 角色显示在终末地中。
-- **人物遮挡**：玩家皮肤使用 `entity_translucent`，按半透明导出时不写深度，身体部件按提交顺序互相覆盖。皮肤（非方块图集）改为镂空导出；名牌文字不再导出（终末地不应用文字的顶点颜色，会显示为白条）。
-- **按键**：终末地在前台时，MC 进程的 `GetAsyncKeyState` 读不到任何按键（采样显示连转发正常的 B 和引号也是未按下），因此 F1/F3 改由宿主模块转发，需要新模块身份 `gameplay34`。引号键实测会在 MC 中切换地形线框；线框原先 3 厘米粗且一半埋在终末地地面下，现已抬高、加粗。
-- **一键重启**：`restart-neoforge-mc.cmd` 已实测可在终末地运行时重新拉起桥接客户端。
-
-## 还需要完成的兼容验证
-
-| 项目 | 当前状态与验收要求 |
-|---|---|
-| 基础桥接 | 模组组合加载、自动进入桥接存档、HUD 透明叠加、放置方块显示已实机确认；库存、水、死亡恢复仍需逐项验收 |
-| Create | 已接入普通渲染捕获；需检查齿轮、轴、机械动力传输、移动装置及其动态贴图，确定有没有绕过捕获的特效 |
-| 航空学显示 | 已写船体姿态与网格适配；需验证组装、平移、旋转、解体和重连，不能只看到静态方块就认定成功 |
-| 玩家乘坐／站立 | 依赖 Sable 运行时钩子；需确认移动船体上的玩家、镜头、交互射线和上下船位置 |
-| 船体与宿主地形碰撞 | 已写 `SableTerrainMixin`／`SableHostTerrain`：在 Sable 把区块段上传给 Rapier 前，用宿主地形体素填充空气格；地形流更新、方块改动后逐格同步，玩家放置的 MC 方块优先。宿主地形按石头的摩擦与弹性计算。适配器已加载无报错，**船体落地、滑行和地形重载尚未实机验收** |
-| Create: Flight Control | 0.7.7 已加载，未装的可选联动（ComputerCraft 等）自动跳过；飞控方块尚未实机验收 |
-| 宿主 NPC 与移动船体 | 当前动态网格通过场景消息绘制，没有建立对应的动态宿主碰撞体；NPC 登机、阻挡与寻路未完成 |
-| 内容模组（TaCZ／YSM／TLM／Maid Addition） | 五件 JAR 已锁哈希并加入 `libs/`，Mixin 冲突静态审计通过；模组加载、枪械射击与换弹、女仆实体导出、YSM 第三人称模型进 avatar 通道、扫帚穿地表现、实体预算表现均需实机验收 |
-| 光影与额外渲染器 | 未兼容。Veil／Flywheel 的特殊 GPU 绘制和材质效果需要分别检查；暂不安装额外光影模组 |
-
-首轮限制为附近静态区块、最多 192 个普通实体、256 个方块实体及 8 艘附近船体，船体方块遍历总预算 8192。单条纹理消息受协议大小限制，高分辨率材质可能超出预算。这是便于定位问题的范围，不保证复杂大型飞船或工厂帧率。
-
-下一阶段验收小型航空学船体在终末地地面的起降与滑行，并为移动船体建立宿主碰撞体；完成前不标记“航空学完全兼容”。
-
-## 许可与分发
-
-本仓库桥接源码沿用 MIT 和上游声明。下载脚本从发布方获取 Create、Aeronautics、Sable 与 Create: Flight Control，逐文件验证 SHA-512；第三方 JAR、游戏资产和本机存档不进入 Git。各模组按各自许可分发，锁文件不改变这些许可。Create: Flight Control 未公开源码仓库，锁文件的来源链接指向其 Modrinth 页面。
+已有缓冲区复用、区块快照、异步图集读回和队列背压优化；复杂船体仍有捕获成本，没有同场景联动 FPS 对照，见 [性能说明](PERFORMANCE.md)。

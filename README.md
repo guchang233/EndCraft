@@ -1,86 +1,99 @@
 # EndCraft
 
-**4.2.1 · Windows x64 · 实验性项目。** 在终末地的真实场景中使用 Minecraft 的角色、物品栏、方块、战斗、机械动力和航空学，支持 MC 局域网联机。两款游戏同时运行：MC 计算玩法，终末地显示场景。
+**4.2.1 · Windows x64 · 终末地 1.6.3 · 实验性项目**
 
-4.2.1 使用 `endcraft.gameplay39`，将按敌人最大生命换算伤害改为按当前终末地角色攻击力换算，避免普通敌人与 Boss 的击杀次数被百分比算法抵消。保留 4.2.0 的终末地 **1.6.3** 适配、渲染修正和性能优化。安装与验证状态见 [1.6.3 适配记录](docs/ENDFIELD-1.6.3.md) 和 [4.2 更新说明](docs/RELEASE-4.2.1.md)。
+在终末地场景中使用 Minecraft 的角色、物品栏、建造和战斗，也可选装机械动力、航空学、枪械与女仆。两款游戏同时运行：MC 计算玩法，终末地显示场景。
 
-**目录**：[安装](#安装-421) · [加载方式](#加载方式) · [伤害换算](#伤害换算) · [常用操作](#常用操作) · [限制与文档](#限制与文档) · [许可](#许可)
+## 先看启动方式
+
+**终末地必须通过官方鹰角启动器启动。** EFML 用来安装、启用和加载模组；当前使用已验证的 **xinput 代理加载**。安装代理后，游戏经官方启动器启动时会自动载入 EFML 和已启用的 EndCraft 模块。
+
+当前流程为：**配置 EFML → 官方启动器进入终末地可移动场景 → 启动 MC → 等待桥接。** 直接运行 `Endfield.exe` 或沿用旧版第三方直接启动／注入流程，会遇到“请通过官方启动器打开游戏”。
 
 ## 安装 4.2.1
 
-普通玩家使用发行附件即可，无需源码、Visual Studio 或 Python。
+### 下载组件
 
-> [!IMPORTANT]
-> - **终末地 1.6.3 当前已验证 EFML 的 xinput 代理方式。** 安装代理后从官方鹰角启动器开始游戏。旧版 Better-Endfield 的第三方模块方式见 [加载方式](#加载方式)。
-> - **Minecraft 需要自行下载和安装。** EndCraft 不附带 MC 本体、启动器、Java 或任何模组依赖，只提供终末地宿主模块和 MC 端模组 JAR；请自行购买正版 Minecraft，并用 PCL2、HMCL 等启动器安装。
+从 [4.2.1 发行页](https://github.com/guchang233/EndCraft/releases/tag/v4.2.1) 下载以下三个文件：
 
-1. 安装终末地并确认能正常进入游戏，再安装 [EFML](https://github.com/guchang233/EFML/releases/latest)，设置游戏路径并安装 xinput 代理。
-2. 从 [EndCraft 4.2.1 发行页](https://github.com/guchang233/EndCraft/releases/tag/v4.2.1) 下载 **3 个文件**：
-   - `EndCraft-gameplay39-4.2.1-win-x64.zip`：终末地玩法模块。
-   - `EndCraft-probe-4.2.1-win-x64.zip`：共享内存模块，负责建立终末地与 MC 的通信通道。**缺少它 MC 连不上**，玩法模块会提示缺少依赖 `endcraft.probe`。
-   - `endcraft-neoforge-guest-4.2.1.jar`：MC 模组。
-3. 打开 EFML 的 **「模组」→「导入模组压缩包」**，**两个 ZIP 分别导入并都启用**，停用旧版玩法模块。首次导入默认配置已包含 `auto_enable: true`。
-4. **自行下载安装 Minecraft**：用 PCL2 或 HMCL 新建独立的 **MC 1.21.1 + NeoForge 21.1.247 或更新** 实例，自行安装 **Java 25**。
-   - **游戏内存手动设为 4 GB**（装机械动力时至少 4 GB）。不要用自动分配：终末地运行时空闲内存很少，PCL 自动分配可能只给 512 MB，MC 会在加载中内存溢出、直接消失。
-5. 将上述 MC JAR 放入该实例的 `mods` 文件夹，不需要其他模组。在实例 JVM 参数末尾追加：
+| 文件 | 放在哪里 |
+|---|---|
+| `EndCraft-gameplay39-4.2.1-win-x64.zip` | 导入 EFML：玩法模块 |
+| `EndCraft-probe-4.2.1-win-x64.zip` | 导入 EFML：必需的共享内存模块 |
+| `endcraft-neoforge-guest-4.2.1.jar` | 放入 MC NeoForge 实例的 `mods` 文件夹 |
 
-   ```text
-   --enable-native-access=ALL-UNNAMED -Dendcraft.allowHostConnection=true
-   ```
+发行页还提供 Fabric 客户端、完整源码归档和校验和。普通 NeoForge 用户不需要下载它们；源码包不能导入 EFML。MC 本体、Java、第三方模组及光影包需要自行准备。
 
-6. **先通过官方鹰角启动器启动终末地，进入可移动场景；再启动 MC。** EFML 会随游戏加载模块。连上后 MC 窗口会**自动隐藏**（正常现象，画面改在终末地中显示），继续加载约 1–2 分钟后自动打开桥接存档。切回终末地，看到 MC 物品栏即可。只启动一个 MC。
+### 配置 EFML
 
-**可选：机械动力与航空学。** EndCraft 已兼容 [Create 6.0.10](https://modrinth.com/mod/LNytGWDc/version/UjX6dr61)、[Aeronautics 1.3.2 bundled](https://modrinth.com/mod/oWaK0Q19/version/44pLdPGg)、[Sable 2.0.6](https://modrinth.com/mod/T9PomCSv/version/fg9dTRz9) 与 [Create: Flight Control 0.7.7](https://modrinth.com/mod/IGVrnkhH/version/act82pgK)，想玩可自行放入 `mods`，版本需一致；不装不影响基本玩法。联机时所有人的模组组合要相同。
+1. 正常退出终末地，安装 [EFML](https://github.com/guchang233/EFML/releases/latest)，指定游戏目录，在加载方式中选择并安装 **xinput 代理**。
+2. 在 EFML 的模组页分别导入上面两个 ZIP，启用 `endcraft.probe` 和 `endcraft.gameplay39`。默认配置已包含 `auto_enable: true`。
+3. 停用 gameplay38 等旧玩法模块。同一时间只启用一个 EndCraft 玩法模块，probe 需同时启用。
 
-**可选：枪械与女仆。** 开发组合使用 TaCZ 1.1.8-hotfix-r7、Touhou Little Maid 1.5.3 和 GeckoLib 4.9.3；版本与来源见 [锁文件](mc-neoforge/modpack.lock.json)。YSM 当前停用；Maid Addition 是自行提供的可选本地文件。第三方模组、枪包和光影包均不随发行附件分发。
+如果 EFML 提示游戏目录已有其他加载器，先用原来的安装工具卸载其代理，再安装 EFML 代理；不要直接覆盖或删除来源不明的 `xinput1_4.dll`。
 
-ZIP 导入管理器，JAR 放入 MC 的 `mods`，两者不要混用。只导入上面两个模块 ZIP；源码包 `EndCraft-*-source.tar.gz` 不是模块。
+### 配置 Minecraft
 
-源码安装过旧版的用户：游戏目录里的 `xinput1_4.dll` 是 EndCraft 旧加载器，Better-Endfield 启动时会提示“游戏目录已有未知 xinput1_4.dll”。关闭游戏后执行 `python tools/install-probe.py uninstall` 卸载旧加载器，再从 Better-Endfield 启动；继续使用旧加载器的按 [源码安装与升级说明](docs/INSTALL.md) 维护。两套加载器只保留一套，只启用一个 EndCraft 玩法模块（`endcraft.probe` 不算玩法模块，需同时启用）。
+用 PCL2、HMCL 等 MC 启动器创建独立实例：
 
-4.1.0 用户：4.1.0 附件缺少共享内存模块，玩法模块还缺 `author` 字段导致无法导入，请改用 4.2.1 附件。终末地关闭或闪退后，MC 会自动保存并退出，不再留在后台。
+| 项目 | 配置 |
+|---|---|
+| Minecraft | 1.21.1 |
+| 加载器 | NeoForge；开发环境为 21.1.247，正式 21.1.257 实例已接通桥接 |
+| Java | Java 25 |
+| MC 内存 | 手动分配 4 GB；与终末地同时运行时避免被自动分配到过小内存 |
+| EndCraft | 将上述 NeoForge JAR 放进这个实例的 `mods`，移除旧的 EndCraft JAR |
 
-## 加载方式
+在实例的 JVM 参数中加入：
 
-EndCraft 的两个 ZIP 是第三方模块，需要由模组加载器装进终末地。下面两种加载器任选其一：
+```text
+--enable-native-access=ALL-UNNAMED -Dendcraft.allowHostConnection=true
+```
 
-| 加载器 | 状态 | 说明 |
-|---|---|---|
-| [Better-Endfield 3.5.4](https://github.com/Dr-hydra/Better-Endfield/releases/tag/v3.5.4) | 旧版游戏曾验证 | 需有第三方模块入口；未复测终末地 1.6.3 |
-| [EFML](https://github.com/guchang233/EFML) | 1.6.3 实机模块加载已验证 | 基于 Better-Endfield 核心组件的独立模组加载器，与其第三方模块格式兼容 |
+### 开始游戏
 
-**EFML 加载步骤**：
+1. 打开**官方鹰角启动器**，点击开始游戏，进入终末地可以移动角色的场景。
+2. 确认 EFML 已加载 probe 和 gameplay39，再从 MC 启动器启动上述实例。
+3. 等待 MC 资源和桥接存档加载。MC 窗口连上后会自动隐藏，回到终末地即可操作；加载尚未完成时不要再次启动 MC。
 
-1. 从 [EFML 发行页](https://github.com/guchang233/EFML/releases/latest) 下载 `EFML-<版本>-Setup.exe` 并安装。首次运行时，它会自动查找游戏，并让你选择加载方式：「注入」（推荐）或「xinput 代理」。
-2. 在 EFML 的 **「模组」→「导入模组压缩包」** 中分别导入 `EndCraft-probe-…zip` 和对应版本的 `EndCraft-gameplay…zip`，确认两个都已启用，仅保留一个玩法模块。
-3. 安装 EFML 的 xinput 代理后，通过官方鹰角启动器点击「开始游戏」。终末地 1.6.3 直接执行 `Endfield.exe` 会提示必须使用官方启动器。进入可移动场景后再启动 MC，其余步骤不变。
+看到 MC 物品栏后先测试移动、打开背包和放置方块。没有出现时，按 [故障排查](docs/TROUBLESHOOTING.md) 检查模块状态和 MC 日志。终末地关闭后，已连接的 MC 会尝试正常保存并退出。
 
-**两种加载器不能同时使用。** 如果之前在 Better-Endfield 中选择了「XInput自启动」，请先在 Better-Endfield 中卸载它（或改用其他加载方式），确保游戏目录里没有 Better-Endfield 的 `xinput1_4.dll`。否则 EFML 会提示游戏目录中已有其他加载器，并拒绝启动。换回 Better-Endfield 前，在 EFML 的「设置」中移除代理（如果安装过）。
+## 从旧版升级
 
-## 伤害换算
+正常退出两款游戏，导入并启用 4.2.1 的两个模块 ZIP，停用旧玩法模块。4.2.1 的伤害修正在宿主，已有 4.2.0 MC JAR 可继续使用；需要统一版本号时再换成 4.2.1 JAR，替换后保留一个 EndCraft JAR。
 
-4.2.1 的默认规则是 **MC 命中伤害 ÷ 5 × 当前终末地角色攻击力**，不再根据目标最大生命放大每次命中。武器伤害、MC 已计算的暴击和当前角色攻击力参与换算，敌人保留原有的血量差异。
+保留原来的 MC 存档与世界锚点，不要用删存档解决连接问题。MC 单独退出或崩溃后，可重新启动同一个实例连接仍在运行的终末地。只退出世界回到 MC 菜单后若未自动重连，可正常退出 MC，再启动该实例。
 
-EFML 的 `endcraft.gameplay39` 配置支持 `damage_multiplier`，默认 `1`，范围 `0.01–100`；`2` 为两倍，`0.5` 为一半。修改时保留现有配置字段。升级后只启用 gameplay39 和 probe，停用 gameplay38 等旧玩法模块。已有 4.2.0 MC JAR 可继续使用本次伤害修正。
+## 可选模组
 
-**验证范围：**公式回归、模块配置检查和实际桥接已通过，运行中的游戏也已确认攻击力读取接口；尚未采集真实命中的扣血数据，实战平衡未验证。详见 [伤害换算](docs/COMBAT.md)。
+以下是本项目使用的版本组合，第三方 JAR 不包含在 EndCraft 附件中；来源、文件名与哈希见 [依赖锁文件](mc-neoforge/modpack.lock.json)。联机双方应使用相同组合。
 
-## 常用操作
+| 内容 | 版本／状态 |
+|---|---|
+| Create / Aeronautics / Sable / Flight Control | 6.0.10 / 1.3.2 bundled / 2.0.6 / 0.7.7；航空学尚未完成全部实机验收 |
+| TaCZ / Touhou Little Maid | 1.1.8-hotfix-r7 / 1.5.3；Z 配件预览和点击隔离已实测 |
+| GeckoLib | 4.9.3，开发组合保留的前置 |
+| YSM | 当前停用，本机原生库加载失败 |
+| Maid Addition | 可选本地文件，无锁定的公开下载地址；缺少它不阻断构建 |
 
-- **WASD / 空格**：移动、跳跃；**左键 / 右键**：攻击、破坏、放置、交互。
-- **E / F5 / T**：库存、切换视角、聊天与指令。
-- **;（分号）**：切换 MC 独占输入；关闭后恢复终末地输入，MC 仍可能响应同一按键。
-- **F6**：桥接就绪且没有打开 MC 界面时，切换终末地原生人物模型显示。默认隐藏，按一次显示、再按一次隐藏；状态在当前模块运行期间保持。需加载更新后的玩法 DLL。
-- **'（单引号）**：开关终末地地形三角面显示。
-- `/gamemode creative`：创造模式；`/endcraft recover` 或 **Ctrl+Alt+R**：恢复角色同步。
-- `/endcraft lan offline`：开放局域网；朋友使用相同模组加入。详见 [联机教程](docs/MULTIPLAYER.md)。
+## 4.2.1 伤害规则
 
-## 限制与文档
+**原生伤害输入 = MC 命中伤害 ÷ 5 × 当前终末地角色攻击力 × 倍率。** 去掉了按目标最大生命扣百分比的旧算法，敌人血量差异不再被换算抵消。
 
-光影与终末地原生场景的深度融合尚未实现，NeoForge 已增加完整 MC 管线的实验性光影预览入口，见 [渲染覆盖与光影说明](docs/RENDERING.md)。桥接侧已减少重复建模与分配，并增加异步图集读回及队列背压，验证范围见 [性能说明](docs/PERFORMANCE.md)。复杂地形、航空学起降、NPC 登船与 TNT 炸原生岩石仍有未验收项。两台电脑各自运行终末地的联机尚未实机验证。Fabric 26.3 客户端仍保留，存档与 NeoForge 1.21.1 不兼容。
+EFML 的 gameplay39 模块配置中，`damage_multiplier` 默认 `1`，允许 `0.01–100`；`2` 为两倍，`0.5` 为一半。修改时保留已有字段。公式和配置检查通过，已实际接通桥接并核对攻击力接口签名；**真实命中扣血与实战平衡尚未验证**。详见 [伤害说明](docs/COMBAT.md) 与 [4.2.1 更新说明](docs/RELEASE-4.2.1.md)。
 
-[4.2 更新说明](docs/RELEASE-4.2.1.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [NeoForge 与源码构建](docs/NEOFORGE.md) · [实现原理](docs/ARCHITECTURE.md)
+## 操作与当前限制
+
+- **WASD / 空格 / 左右键**：移动、跳跃、攻击、建造和使用物品。
+- **E / F5 / T**：背包、切换视角、聊天；**分号**切换 MC 输入独占，关闭后可能出现双游戏同时响应。
+- **F6**：桥接就绪且未打开 MC 菜单时切换终末地原生人物显示；默认隐藏。
+- **单引号 `'`**：开关终末地地形三角面；`/endcraft recover` 或 **Ctrl+Alt+R** 恢复位置同步。
+- **`/endcraft lan offline`**：开放 MC 局域网，见 [联机教程](docs/MULTIPLAYER.md)。两台电脑各运行终末地的完整联机仍未实测。
+
+复杂／多层地形、女仆长期支撑、航空学起降和 NPC 登船仍有未完成项。光影仅有完整 MC 画面的实验性预览，尚未实现与终末地场景的深度融合；性能优化也没有同场景联动 FPS 对照。Fabric 26.3 客户端保留，不能与 NeoForge 混用存档。
+
+[安装与源码构建](docs/INSTALL.md) · [操作教程](docs/USER-GUIDE.md) · [故障排查](docs/TROUBLESHOOTING.md) · [NeoForge](docs/NEOFORGE.md) · [渲染](docs/RENDERING.md) · [性能](docs/PERFORMANCE.md) · [实现原理](docs/ARCHITECTURE.md)
 
 ## 许可
 
-宿主基于 [Better-Endfield](https://github.com/Dr-hydra/Better-Endfield)，使用 AGPL-3.0；MC 端改编自 [SkyCraft](https://github.com/chasmlol/SkyCraft)，使用 MIT。第三方模组遵循各自许可，见 [许可](LICENSE) 与 [第三方声明](THIRD-PARTY-NOTICES.md)。
+宿主基于 [Better-Endfield](https://github.com/Dr-hydra/Better-Endfield)，使用 AGPL-3.0；MC 端改编自 [SkyCraft](https://github.com/chasmlol/SkyCraft)，使用 MIT。第三方模组遵循各自许可，见 [LICENSE](LICENSE) 和 [第三方声明](THIRD-PARTY-NOTICES.md)。
